@@ -141,7 +141,17 @@ from the `session/subagents` RPC joined with the on-disk agent artifacts.
 ## Development
 
 Zero dependencies, plain CommonJS, no build step. Tests:
-`npm test` (`node --test "test/**/*.test.js"`) — functional only, no mocks;
+`npm test` (`node --test --test-concurrency=1 "test/**/*.test.js"`) — functional only, no mocks;
 the live tests drive the real GLM API through the isolated scratch HOME
 (mostly Flash; exactly one GLM-5.3 acceptance run). The repo `.env` (never
 committed, never shipped) provides `API-KEY` for the live tests.
+
+Acceptance (definition of done, run verbatim in CI; each loads the key from
+`.env`, uses `--effort max`, tees the CLI's `--json` output, and prints a
+final `SUCCESS <token>` line — exit 0 only on success):
+
+```sh
+npm run accept:flash       # one-shot via GLM-5.3-Flash -> SUCCESS PINEAPPLE
+npm run accept:subagent    # subagent creates done.txt (AVOCADO) in a throwaway --cwd -> SUCCESS AVOCADO
+npm run accept:53          # one-shot via GLM-5.3 -> SUCCESS PINEAPPLE
+```

@@ -18,6 +18,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "accept:flash": "node scripts/accept.js flash",
+    "accept:subagent": "node scripts/accept.js subagent",
+    "accept:53": "node scripts/accept.js glm53"
   }
 }
