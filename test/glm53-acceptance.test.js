@@ -23,7 +23,7 @@ test('glm-5.3 one-shot acceptance: OK, model cross-checked on the wire', async (
       const { code, stdout, stderr } = await cli(
         ['--model', 'glm-5.3', '--json', '--cwd', work, PROMPT],
         { cwd: work, timeoutMs: 300000 }
-      );
+      ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {
         assert.fail(`config error exit ${code}: ${stderr.trim()}`);
       }

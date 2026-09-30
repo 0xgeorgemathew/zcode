@@ -723,3 +723,73 @@ Everything else (wire sequence, isolation proof, model registration layers,
 effort plumbing, subagent mechanism) is cited from the app-research bundle
 supplied with the ask, whose live-verification section reports a real
 GLM-5.3-Flash completion through exactly this path.
+
+---
+
+## 16. Builder findings (live-pinned during the TDD build, 2026-09-30)
+
+Corrections and confirmations discovered while making steps 4–8 green; every
+item below was observed on the wire during this build:
+
+- **Effort field on the wire is `request.body.output_config.effort`** in the
+  engine's rollout capture (`~/.zai-code/home/.zcode/cli/rollout/model-io-<sessionId>.jsonl`,
+  one `type:"model_io"` record per model request). A `max` run captured
+  `{"output_config":{"effort":"max"}}`, a `high` run
+  `{"output_config":{"effort":"high"}}`; both bodies also carry
+  `thinking:{type:"enabled"}` and `max_tokens:128000`. The §12-step-5 escape
+  hatch ("body provably carries no level field") was NOT needed — the level
+  is on the wire, just under `output_config`, not `thinking`.
+- **`session/create` does NOT honor a `mode` param** (result came back
+  `mode:"build"` with `mode:'yolo'` sent) — the §9.1 `session/setMode`
+  `{sessionId, mode:'yolo'}` fallback is mandatory, and works: the engine
+  broadcast `state.updated` with `patch.mode.current:"yolo"`, and the same
+  patch shows `thoughtLevel.current:"max"` and
+  `model.current.options.reasoningLevel:"max"`.
+- **Session id field is `result.session.sessionId`** (not `.id`).
+- **Completion frame is `session/event` with `params.type:"turn.completed"`**
+  and the authoritative final text at `params.payload.response` (not
+  `payload.content`); usage at `params.payload.usage`. Corroborating
+  terminal signals: `computer-use/operation-event` `kind:"turn-completed"`
+  and `v4/telemetry/event` `kind:"turn.terminal"` (`status:"success"`).
+- **Streaming frames are `session/event` with `params.type:"model.streaming"`**,
+  payload `{delta, kind:"reasoning_delta"|"text_delta", done}`.
+- **Engine-reported model evidence** rides on `session/event`
+  `params.type:"session.updated"` with `payload.type:"model_request_started"`
+  carrying `{providerId, modelId, modelCall.reasoning.requestedLevel}`.
+- **Server-directed request ids are strings** (`"server-2"`, `"server-4"`);
+  answers must repeat their id. `session/requestRuntimePreferences` arrived
+  twice per run; `interaction/requestOfficialMcpAuthHeaders` arrived and a
+  `-32601` answer was again non-fatal.
+- **One live `interaction/requestPermission` frame was captured** (step 6,
+  build-mode probe): params `{input, reason, requestId, riskLevel,
+  sessionId, options:[{kind:"allow"|"allow-always"|"addRules"|"deny",
+  optionId, response:{decision, reason}, …}], toolCallId, toolName,
+  turnId}`. Its own options block confirms the answer schema
+  `{decision:"allow", reason}` — matching the bundle's headless broker,
+  which returns `{decision:"allow", reason, resolvedAt}` (resolvedAt
+  optional). The client answers exactly that. Caveat observed: an answer
+  sent TWICE for the same request id makes the engine fail the tool call
+  with "Permission request failed" — one answer per request id (the probe
+  bug that revealed this was a duplicated readline, not client behavior).
+- **Yolo-mode subagent runs produce ZERO permission requests** (0 frames in
+  the successful step-6-style run) — the §9.1 primary strategy holds; the
+  allow-answer path remains defense in depth.
+- **`session/subagents` shape**:
+  `{revision, childSessionIds, running:[], ended:{total, items:[{
+  childSessionId, agentId, toolCallId, subagentType, title, startedAt,
+  endedAt, status, summary}]}}`. IMPORTANT: `status:"success"` means the
+  subagent RETURNED, not that its work succeeded — a build-mode subagent
+  that failed every write still ended `status:"success"` with a failure
+  summary. The artifact check (hello.txt content) is the real gate, as
+  §12 step 6 specified.
+- **Subagent artifacts** at `<scratch>/.zcode/cli/agents/<parent_sess>/
+  agent_<uuid>/{metadata.json,output.txt}`; metadata includes `agentId`,
+  `childSessionId`, `profileId`, `profileSnapshot.source` (`"built-in"` for
+  general-purpose, reconfirmed live).
+- **hello.txt came back byte-exact** (`HELLO-SUBAGENT`, 14 bytes, no
+  trailing newline) — the subagent rewrote the file to satisfy "exactly".
+- Test runner note: on node v26.5.0 `node --test test/` (directory arg) is
+  treated as a module path and fails; the npm script uses node's own glob
+  `node --test --test-concurrency=1 "test/**/*.test.js"` (concurrency 1
+  because `doctor --fresh` rebuilds the shared scratch HOME and must not
+  race a live engine child, and because the live tests share one API key).

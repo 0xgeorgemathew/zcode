@@ -1,12 +1,147 @@
 # zai-code
 
-A thin, zero-dependency Node CLI that runs **GLM-5.3** and **GLM-5.3-Flash**
-coding turns headless, by driving the ZCode engine's `app-server --stdio`
-JSON protocol.
+A thin, zero-dependency Node CLI for headless **GLM-5.3 / GLM-5.3-Flash**
+coding turns. It drives the ZCode engine's `app-server --stdio` JSON
+protocol, so it inherits the full agentic runtime — including subagents that
+do real work — behind a small, scriptable surface.
 
-> Scaffold — see `DESIGN.md` for the full design. This README will be
-> completed as the implementation lands.
+## Quickstart
 
-## Status
+```sh
+# 1. Configure your Z.AI API key (never printed, stored mode 600)
+echo "$ZAI_API_KEY" | zai-code login     # or just export ZAI_API_KEY
 
-Step 0 (package scaffold). Commands: none yet.
+# 2. Sanity-check the setup (engine, scratch HOME, key)
+zai-code doctor
+
+# 3. One-shot turn (default model: glm-5.3-flash, default effort: max)
+zai-code "Explain this repo in two sentences"
+zai-code --model glm-5.3 --effort high --json "Reply with exactly: OK"
+
+# 4. Dispatch a subagent that must do real work (verified, not trusted)
+zai-code agent --cwd "$WORK" "Use the Agent tool to create hello.txt containing HELLO-SUBAGENT"
+```
+
+## Models and effort
+
+| | |
+|---|---|
+| Allowed models | `glm-5.3` (GLM-5.3) and `glm-5.3-flash` (GLM-5.3-Flash) — aliases: `5.3`, `53`, `5.3-flash`, `flash`, `53f`. Anything else exits 2 **before any engine spawn or API call**. |
+| Default model | `glm-5.3-flash` (cheap/fast; `--model glm-5.3` for the acceptance-grade model) |
+| Effort | `--effort low\|medium\|high\|xhigh\|max`, default **max**. Sent on every turn (`session/create` `model.options.reasoningLevel` + `thoughtLevel`, `session/send` `modelSelection.options.reasoningLevel`); verified on the wire via the engine's own rollout captures (`request.body.output_config.effort`). Levels beyond low/high/max may be rejected per-model; errors surface verbatim with exit 5. |
+
+## Yolo mode and the `--cwd` blast radius
+
+All sessions run in **yolo mode**: the wrapper forces `mode:"yolo"` right
+after `session/create` (`session/setMode`), matching the engine's own `-p`
+default, so tool side effects — including subagent file writes — are
+auto-approved and never stall on an interactive permission prompt. The
+declared blast radius is the session workspace: `--cwd <dir>` (default
+`process.cwd()`). Point it at a directory you are willing to let the agent
+modify. As defense in depth the client still answers any
+`interaction/requestPermission` with an explicit allow, and any
+`interaction/requestUserInput` fails the run immediately (exit 5) — a
+headless script has no user.
+
+## Isolation: your live `~/.zcode` is never touched
+
+`zai-code` never writes to the desktop app's state. The engine is spawned
+with `HOME` pointed at a scratch copy that this package owns
+(`~/.zai-code/home`, mode 700), built once and mtime-cached
+(`zai-code doctor --fresh` rebuilds):
+
+- Only the **top-level files** of `~/.zcode/v2` are copied (JSON state
+  files). The 1.2 GB of logs/sessions/checkpoints and the sqlite index are
+  not. **Your OAuth `credentials.json` is deliberately never copied** — the
+  account providers are structurally inoperative inside the scratch, and the
+  copy was live-verified to still register `zai-api/GLM-5.3-Flash`.
+- The scratch `provider_config.json` keeps **only** the `zai-api` rule, with
+  its `access.apiKey` swapped to the key this package resolved (mode 600).
+  Imported third-party rules are pruned.
+- `~/.zcode/agents/*.md` and `~/.zcode/AGENTS.md` are copied so
+  user-defined agent profiles resolve; the built-in profiles (e.g.
+  `general-purpose`) need no copy.
+- Uncontrolled env overrides (`ZCODE_STORAGE_DIR`, `ZCODE_DATA_BASE_DIR`,
+  `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`, `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_BASE_URL`) are deleted from the child environment; the builtin
+  provider config is pinned via `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`.
+- On a fresh machine with no `~/.zcode` at all, a minimal provider config is
+  synthesized — **experimental/unproven**; `doctor` reports
+  `"isolationMode":"synthesized"` for that path.
+
+Your real workspace (`--cwd`) is of course used for real work — config is
+isolated, work is not.
+
+## Key handling
+
+`ZAI_API_KEY` env var → `~/.zai-code/credentials.json` (written by
+`zai-code login`, mode 600 under a mode-700 root). No key → exit 3. The key
+is never printed or logged; the only file it ever lands in is the scratch
+`provider_config.json` (the engine requires it there to register the
+provider — an env-var fallback provably does not register).
+
+## Engine requirements
+
+- The engine is the one bundled with the ZCode desktop app:
+  `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` (resolved
+  automatically). Point `ZAI_CODE_ENGINE` at another copy (or a directory
+  containing `zcode.cjs`) to pin one; `zai-code doctor` prints the resolved
+  path, version and sha256.
+- **node ≥ 26 recommended** for the engine child (it has only been tested
+  under v26.x). The wrapper itself only needs node ≥ 20; when the spawning
+  node is older than 26, `doctor` warns and you can set `ZAI_CODE_NODE` to
+  a newer interpreter for the engine spawn.
+- macOS today (the app-bundle path is macOS-specific; nothing else in the
+  wrapper is).
+
+## `--json` contract
+
+NDJSON events on stdout, final line (stable for scripts):
+
+```json
+{"type":"result","ok":true,"response":"…","model":"GLM-5.3-Flash","mode":"yolo",
+ "effort":"max","sessionId":"sess_…","usage":{"inputTokens":19608,"outputTokens":3},
+ "durationMs":21972}
+```
+
+`model`/`effort` are engine-reported values cross-checked from the engine's
+own `model_request_started` event, not the wrapper's echo. Intermediate
+lines: `{"type":"stream",…}` (deltas), `{"type":"model_request_started",…}`,
+`{"type":"state",…}`, `{"type":"turn",…}`. `agent` adds
+`"subagents":[{agentId,childSessionId,profileId,status,summary,output,…}]`
+from the `session/subagents` RPC joined with the on-disk agent artifacts.
+
+## Exit codes
+
+| code | meaning |
+|---|---|
+| 0 | success |
+| 1 | unexpected internal error |
+| 2 | usage error / unknown model / unknown effort |
+| 3 | no API key (`zai-code login` or `ZAI_API_KEY`) |
+| 4 | engine or builtin provider config not found |
+| 5 | turn failed (engine error, failed terminal, user-input request) |
+| 6 | `agent`: no subagent dispatched or none ended `success` |
+| 124 | `--timeout-ms` exceeded |
+
+## Options
+
+```
+--model <id>      glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
+--effort <level>  low | medium | high | xhigh | max. default: max
+--cwd <dir>       workspace for the session (default: process.cwd())
+--profile <name>  subagent profile for `agent` (default: general-purpose)
+--json            NDJSON events + final result line on stdout
+--timeout-ms <n>  default 600000
+--fresh           rebuild the scratch HOME first
+-p, --prompt <t>  prompt text (alias for positional prompt)
+--version / --help
+```
+
+## Development
+
+Zero dependencies, plain CommonJS, no build step. Tests:
+`npm test` (`node --test "test/**/*.test.js"`) — functional only, no mocks;
+the live tests drive the real GLM API through the isolated scratch HOME
+(mostly Flash; exactly one GLM-5.3 acceptance run). The repo `.env` (never
+committed, never shipped) provides `API-KEY` for the live tests.

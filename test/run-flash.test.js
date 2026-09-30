@@ -58,7 +58,7 @@ test('Flash one-shot: OK, model+effort on the wire, yolo mode, usage, streaming'
       const { code, stdout, stderr } = await cli(['--json', '--cwd', work, PROMPT], {
         cwd: work,
         timeoutMs: 240000,
-      });
+      }).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       last = evaluate({ code, stdout, stderr });
       if (last.hardFail) assert.fail(last.hardFail);
       if (last.pass) break;
