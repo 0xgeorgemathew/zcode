@@ -2,8 +2,10 @@
 
 A thin, zero-dependency Node CLI for headless **GLM-5.3 / GLM-5.3-Flash**
 coding turns. It drives the ZCode engine's `app-server --stdio` JSON
-protocol, so it inherits the full agentic runtime — including subagents that
-do real work — behind a small, scriptable surface.
+protocol, so it inherits the full agentic runtime — subagents that do real
+work, MCP servers, skills — behind a small, scriptable surface built for
+**agent callers, not humans**: NDJSON events, stable result line, explicit
+exit codes, session continuity.
 
 ## Install
 
@@ -56,6 +58,74 @@ modify. As defense in depth the client still answers any
 `interaction/requestPermission` with an explicit allow, and any
 `interaction/requestUserInput` fails the run immediately (exit 5) — a
 headless script has no user.
+
+## Thinking (reasoning) while it runs
+
+GLM-5.3 reasons before it answers, and the CLI never hides it:
+
+- `--json`: `{"type":"stream","kind":"reasoning_delta","delta":"…"}` events
+  stream live on stdout alongside `text_delta` — an agent can watch thinking
+  and answer text as they arrive.
+- plain mode: reasoning is mirrored to **stderr** live (dimmed on a TTY,
+  prefixed `[reasoning] `) while stdout carries only the answer — pipe
+  stdout, watch stderr. `--quiet` suppresses the mirror.
+- the final result reports `reasoningChars`, and `--include-reasoning` adds
+  the full `reasoning` text to the result line.
+
+## MCP servers
+
+MCP config is inherited from the desktop (`~/.zcode/cli/config.json`,
+enabled servers only) into the isolated scratch HOME — then `--mcp` adds
+servers per invocation without touching anything global:
+
+```sh
+# stdio server (JSON inline or @file)
+zai-code --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
+         "Call get_magic_word and reply with exactly what it returns"
+
+# remote server
+zai-code --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' …
+
+zai-code --mcp @servers.json --mcp-list   # print the effective set as JSON
+zai-code --no-mcp …                        # hermetic: no servers at all (then --mcp still adds)
+```
+
+The CLI **waits for explicitly-added servers to finish connecting** before
+sending the prompt (stdio servers spawn asynchronously; without the wait the
+first turn can miss them), emits `{"type":"mcp","name","status","toolCount"}`
+events in `--json` mode, and lists the effective servers in the result
+(`mcpServers`). Config schema per server: `{"type":"stdio","command","args","env","cwd"}`
+or `{"type":"http"|"sse","url","headers"}` (plus optional `enabled`,
+`timeoutMs`). Overlays are recomputed per run — one run's `--mcp` never
+leaks into the next.
+
+## Skills
+
+Two ways, both real (the model loads them through its Skill tool):
+
+- **Project skills, zero flags**: put `<name>/SKILL.md` under
+  `<workspace>/.zcode/skills/` (the engine walks the workspace; no copy, no
+  flag — `--cwd` is all it takes).
+- **Injected skills**: `--skills <dir>` where dir is one skill (has
+  `SKILL.md`) or a root of `<name>/SKILL.md` dirs — copied into the scratch
+  HOME for this run, removed afterwards (`skillsInjected` in the result).
+  `--no-skills` runs with an empty skill set.
+
+User skills from the desktop (`~/.zcode/skills`) are inherited into the
+scratch HOME at build time (count in `zai-code doctor`).
+
+## Session continuity (multi-turn agents)
+
+Every result carries `sessionId`; sessions persist in the scratch HOME's
+SQLite store, so a later CLI invocation — a new engine process — continues
+the same conversation:
+
+```sh
+SID=$(zai-code --json "Remember the secret word BANANA. Reply with exactly: OK" | tail -1 | jq -r .sessionId)
+zai-code --session "$SID" "Reply with only the secret word I told you."   # → BANANA
+```
+
+The continued result line has `"resumed": true` and the same `sessionId`.
 
 ## Subagents
 
@@ -151,14 +221,20 @@ NDJSON events on stdout, final line (stable for scripts):
 
 ```json
 {"type":"result","ok":true,"response":"…","model":"GLM-5.3-Flash","mode":"yolo",
- "effort":"max","sessionId":"sess_…","usage":{"inputTokens":19608,"outputTokens":3},
+ "effort":"max","sessionId":"sess_…","resumed":false,
+ "usage":{"inputTokens":19608,"outputTokens":3},
+ "reasoningChars":2531,"toolCalls":2,"toolEvents":9,
+ "mcpServers":["context7","word-server"],"skillsInjected":["word-vault"],
  "durationMs":21972}
 ```
 
 `model`/`effort` are engine-reported values cross-checked from the engine's
 own `model_request_started` event, not the wrapper's echo. Intermediate
-lines: `{"type":"stream",…}` (deltas), `{"type":"model_request_started",…}`,
-`{"type":"state",…}`, `{"type":"turn",…}`. `agent` adds
+lines: `{"type":"stream","kind":"text_delta"|"reasoning_delta"|…}` (live
+deltas — reasoning_delta is the thinking), `{"type":"tool","name","phase"}`
+(tool lifecycle), `{"type":"mcp","name","status","toolCount"}` (explicit
+servers settling), `{"type":"model_request_started",…}`, `{"type":"state",…}`,
+`{"type":"turn",…}`. `agent` adds
 `"subagents":[{agentId,childSessionId,profileId,status,summary,output,…}]`
 from the `session/subagents` RPC joined with the on-disk agent artifacts.
 
@@ -182,10 +258,18 @@ from the `session/subagents` RPC joined with the on-disk agent artifacts.
 --effort <level>  low | medium | high | xhigh | max. default: max
 --cwd <dir>       workspace for the session (default: process.cwd())
 --profile <name>  subagent profile for `agent` (default: general-purpose)
+--session <id>    continue a previous session (multi-turn)
+--mcp <json|@f>   add MCP servers (repeatable; stdio/http/sse)
+--no-mcp          hermetic: inherit no MCP servers
+--mcp-list        print effective MCP servers as JSON, exit
+--skills <dir>    inject skill(s) for this run (repeatable)
+--no-skills       empty skill set for this run
+--include-reasoning  full reasoning text in the result line
+--quiet           no reasoning/tool mirror on stderr
 --json            NDJSON events + final result line on stdout
 --timeout-ms <n>  default 600000
 --fresh           rebuild the scratch HOME first
--p, --prompt <t>  prompt text (alias for positional prompt)
+-p, --prompt <t>  prompt text (alias for positional prompt; stdin works too)
 --version / --help
 ```
 

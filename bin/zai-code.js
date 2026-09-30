@@ -14,7 +14,7 @@ const EXIT = {
   TIMEOUT: 124,
 };
 
-const USAGE = `usage: zai-code [options] [prompt…]        one-shot turn
+const USAGE = `usage: zai-code [options] [prompt…]        one-shot turn (prompt via stdin when piped)
        zai-code agent [--profile <name>] <instructions…>
                                             turn that MUST dispatch a subagent
        zai-code login                       read API key from stdin → credentials
@@ -25,7 +25,20 @@ options:
   --effort <level>  low | medium | high | xhigh | max. default: max
   --cwd <dir>       workspace for the session (default: process.cwd())
   --profile <name>  subagent profile (agent command; default: general-purpose)
+  --session <id>    continue a previous session (sessionId from a prior result)
+  --mcp <json|@f>   add MCP servers (repeatable). JSON maps names to defs:
+                    {"name":{"type":"stdio","command","args","env"}} or
+                    {"name":{"type":"http","url","headers"}}; @file reads a file
+  --no-mcp          start from an empty MCP set (no desktop servers inherited)
+  --mcp-list        print the effective MCP server set as JSON and exit
+  --skills <dir>    add skills (repeatable): one skill dir (has SKILL.md) or a
+                    root of <name>/SKILL.md dirs. project <cwd>/.zcode/skills
+                    is picked up by the engine without any flag
+  --no-skills       run with an empty skill set (nothing inherited, nothing injected)
+  --include-reasoning  put the full reasoning text in the final JSON result
+  --quiet           do not mirror reasoning to stderr while running
   --json            NDJSON events on stdout; final line {"type":"result",…}
+                    (stream events include reasoning_delta = thinking)
   --timeout-ms <n>  default 600000
   --fresh           rebuild the scratch HOME first
   -p, --prompt <t>  prompt text (alias for positional prompt)
@@ -34,6 +47,43 @@ options:
 function fail(code, message) {
   process.stderr.write(`zai-code: ${message}\n`);
   process.exit(code);
+}
+
+function isDirectory(p) {
+  try {
+    return require('node:fs').statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// --mcp accepts inline JSON or @file; the JSON must map server names to
+// definition objects ({type:"stdio"|"http"|"sse", ...} per the engine's
+// config schema). Fails (exit 2) before any engine spawn.
+function parseMcpSpec(value) {
+  let text = value;
+  if (value.startsWith('@')) {
+    try {
+      text = require('node:fs').readFileSync(value.slice(1), 'utf8');
+    } catch {
+      fail(EXIT.USAGE, `--mcp file "${value.slice(1)}" could not be read.`);
+    }
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    fail(EXIT.USAGE, `--mcp spec must be valid JSON mapping server names to definitions: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    fail(EXIT.USAGE, `--mcp spec must be valid JSON mapping server names to definitions, got ${Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`}.`);
+  }
+  for (const [name, def] of Object.entries(parsed)) {
+    if (!def || typeof def !== 'object' || Array.isArray(def)) {
+      fail(EXIT.USAGE, `--mcp server "${name}" must be an object (e.g. {"type":"stdio","command":...,"args":[...]}).`);
+    }
+  }
+  return parsed;
 }
 
 // Parses argv (without node/script) into {command, prompts, flags}.
@@ -51,6 +101,14 @@ function parseArgv(argv) {
       timeoutMs: 600000,
       profile: 'general-purpose',
       prompt: undefined,
+      session: undefined,
+      mcpSpecs: [],
+      noMcp: false,
+      mcpList: false,
+      skillsDirs: [],
+      noSkills: false,
+      includeReasoning: false,
+      quiet: false,
     },
   };
   const valueFlags = new Map([
@@ -61,16 +119,26 @@ function parseArgv(argv) {
     ['--timeout-ms', 'timeoutMs'],
     ['-p', 'prompt'],
     ['--prompt', 'prompt'],
+    ['--session', 'session'],
+  ]);
+  const listFlags = new Map([
+    ['--mcp', 'mcpSpecs'],
+    ['--skills', 'skillsDirs'],
   ]);
   const boolFlags = new Map([
     ['--json', 'json'],
     ['--fresh', 'fresh'],
+    ['--no-mcp', 'noMcp'],
+    ['--mcp-list', 'mcpList'],
+    ['--no-skills', 'noSkills'],
+    ['--include-reasoning', 'includeReasoning'],
+    ['--quiet', 'quiet'],
   ]);
   const commands = new Set(['run', 'agent', 'login', 'doctor']);
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (valueFlags.has(arg) || boolFlags.has(arg)) {
+    if (valueFlags.has(arg) || boolFlags.has(arg) || listFlags.has(arg)) {
       let key;
       if (valueFlags.has(arg)) {
         key = valueFlags.get(arg);
@@ -80,8 +148,21 @@ function parseArgv(argv) {
           const n = Number(value);
           if (!Number.isFinite(n) || n <= 0) fail(EXIT.USAGE, `--timeout-ms must be a positive number, got "${value}".`);
           out.flags[key] = n;
+        } else if (key === 'session') {
+          if (!value.trim()) fail(EXIT.USAGE, '--session requires a session id.');
+          out.flags[key] = value.trim();
         } else {
           out.flags[key] = value;
+        }
+      } else if (listFlags.has(arg)) {
+        key = listFlags.get(arg);
+        const value = argv[++i];
+        if (value === undefined) fail(EXIT.USAGE, `option ${arg} requires a value.\n${USAGE}`);
+        if (key === 'mcpSpecs') {
+          out.flags.mcpSpecs.push(parseMcpSpec(value, arg));
+        } else {
+          if (!isDirectory(value)) fail(EXIT.USAGE, `--skills requires an existing directory, got "${value}".`);
+          out.flags.skillsDirs.push(value);
         }
       } else {
         key = boolFlags.get(arg);
@@ -133,6 +214,9 @@ function parseArgv(argv) {
 async function main() {
   const parsed = parseArgv(process.argv.slice(2));
   const { command, flags } = parsed;
+  if (flags.mcpList) {
+    return require('../lib/commands/mcp-list.js')(parsed);
+  }
   const run = require('../lib/commands/run.js');
   switch (command) {
     case 'run':
