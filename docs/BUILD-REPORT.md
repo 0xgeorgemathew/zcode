@@ -69,7 +69,7 @@ scratch HOME:
 |---|---|
 | `test/allowlist.test.js` | `gpt-4o` / `GLM-4.6` rejected exit 2 before any spawn |
 | `test/missing-key.test.js` | no key anywhere → exit 3, actionable message |
-| `test/doctor.test.js` | isolation build: scratch provider_config ≤600 holding exactly the zai-api rule; scratch key sha256 == loaded key sha256 ≠ live key sha256; **no `credentials.json` anywhere in scratch**; live `~/.zcode/v2/provider_config.json` + `~/.zcode/cli/config.json` mtimes identical before/after |
+| `test/doctor.test.js` | isolation build: scratch provider_config ≤600 holding exactly the zai-api rule; scratch key sha256 == loaded key sha256 ≠ live key sha256; **no `credentials.json` anywhere in scratch immediately after the isolation build** (during live turns the engine child itself later writes its own MCP-OAuth `credentials.json` into the scratch — mode 600, no API key; the wrapper never copies credentials in); live `~/.zcode/v2/provider_config.json` + `~/.zcode/cli/config.json` mtimes identical before/after |
 | `test/run-flash.test.js` (live, Flash) | one-shot `OK`; engine-reported model (`model_request_started`) = GLM-5.3-Flash; effort max; mode yolo (gates the permission story); usage.outputTokens > 0; ≥1 streaming event |
 | `test/effort-flag.test.js` (live, Flash) | `--effort high` verified on the wire from the engine's rollout capture (`request.body.output_config.effort === "high"`, `thinking.type === "enabled"`); bogus effort exit 2 |
 | `test/agent.test.js` (live, Flash) | subagent really dispatched: `session/subagents` + scratch agents-dir join, all status success; `hello.txt` created inside `--cwd` with byte-exact `HELLO-SUBAGENT`; yolo mode |

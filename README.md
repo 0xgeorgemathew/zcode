@@ -197,9 +197,10 @@ the live tests drive the real GLM API through the isolated scratch HOME
 (mostly Flash; exactly one GLM-5.3 acceptance run). The repo `.env` (never
 committed, never shipped) provides `API-KEY` for the live tests.
 
-Acceptance (definition of done, run verbatim in CI; each loads the key from
-`.env`, uses `--effort max`, tees the CLI's `--json` output, and prints a
-final `SUCCESS <token>` line — exit 0 only on success):
+Acceptance (definition of done; self-contained gates — run them verbatim
+from the repo root on a machine with the engine and a `.env` key. Each loads
+the key from `.env`, uses `--effort max`, tees the CLI's `--json` output, and
+prints a final `SUCCESS <token>` line — exit 0 only on success):
 
 ```sh
 npm run accept:flash       # one-shot via GLM-5.3-Flash -> SUCCESS PINEAPPLE

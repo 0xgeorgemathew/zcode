@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Acceptance runners — the project's definition of done. A CI harness runs
-// these verbatim via the npm scripts accept:flash / accept:subagent /
-// accept:53. Each mode drives bin/zai-code.js as a black box against the
+// Acceptance runners — the project's definition of done. Run them verbatim
+// via the npm scripts accept:flash / accept:subagent / accept:53 (they need
+// the engine and a repo .env key). Each mode drives bin/zai-code.js as a black box against the
 // real GLM API with --effort max, tees the CLI's --json output through (so
 // subagent completion is visible), verifies deterministic evidence, and
 // prints a final "SUCCESS <token>" line — exit 0 only on success.
