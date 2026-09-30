@@ -5,7 +5,19 @@ coding turns. It drives the ZCode engine's `app-server --stdio` JSON
 protocol, so it inherits the full agentic runtime — including subagents that
 do real work — behind a small, scriptable surface.
 
-## Quickstart
+## Install
+
+```sh
+npm install -g zai-code
+```
+
+Requirements: node ≥ 20 for the CLI (≥ 26 recommended for the engine child —
+see [Engine requirements](#engine-requirements)), and the ZCode engine on the
+machine (today: the copy bundled with the ZCode desktop app, resolved
+automatically; `ZAI_CODE_ENGINE` can point elsewhere). Zero runtime
+dependencies.
+
+## Usage
 
 ```sh
 # 1. Configure your Z.AI API key (never printed, stored mode 600)
@@ -21,6 +33,8 @@ zai-code --model glm-5.3 --effort high --json "Reply with exactly: OK"
 # 4. Dispatch a subagent that must do real work (verified, not trusted)
 zai-code agent --cwd "$WORK" "Use the Agent tool to create hello.txt containing HELLO-SUBAGENT"
 ```
+
+Full option reference and the `--json` contract are at the bottom.
 
 ## Models and effort
 
@@ -42,6 +56,43 @@ modify. As defense in depth the client still answers any
 `interaction/requestPermission` with an explicit allow, and any
 `interaction/requestUserInput` fails the run immediately (exit 5) — a
 headless script has no user.
+
+## Subagents
+
+`zai-code agent` wraps your instructions in a dispatch-forcing preamble (the
+model MUST call the in-session `Agent` tool), runs the turn in yolo mode, and
+then verifies the outcome programmatically — it never trusts the prose. Exit
+0 only if the parent turn succeeded AND at least one subagent ended with
+status `success` (exit 6 otherwise). Use `--cwd` to declare where the
+subagent may work:
+
+```sh
+WORK=$(mktemp -d)
+zai-code agent --json --cwd "$WORK" --profile general-purpose \
+  "Use the Agent tool to create the file hello.txt in the current directory containing exactly HELLO-SUBAGENT, then report the agent id." \
+  | tail -1 | jq .subagents
+```
+
+The final `--json` line carries the joined, engine-reported evidence:
+
+```json
+"subagents": [{
+  "agentId": "agent_8f5144b0-…",
+  "childSessionId": "sess_subagent_agent_8f5144b0-…",
+  "profileId": "general-purpose",
+  "status": "success",
+  "summary": "…the subagent's own report…",
+  "output": "…",
+  "durationMs": 59765
+}]
+```
+
+Built-in profiles (like `general-purpose`) need no setup; user-defined
+profiles under `~/.zcode/agents/*.md` are carried into the scratch HOME so
+they keep resolving (custom-profile resolution is documented, not test-gated).
+Note `status:"success"` means the subagent *returned* — when the work itself
+matters, check the artifact, which is exactly what the acceptance gate does
+(`accept:subagent` asserts `done.txt` content byte-for-byte).
 
 ## Isolation: your live `~/.zcode` is never touched
 
