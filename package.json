@@ -1,6 +1,6 @@
 {
   "name": "zai-code",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "GLM-5.3 / GLM-5.3-Flash coding CLI wrapping the ZCode engine's app-server over stdio",
   "license": "MIT",
   "private": false,

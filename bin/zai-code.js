@@ -28,8 +28,9 @@ options:
   --session <id>    continue a previous session (sessionId from a prior result)
   --mcp <json|@f>   add MCP servers (repeatable). JSON maps names to defs:
                     {"name":{"type":"stdio","command","args","env"}} or
-                    {"name":{"type":"http","url","headers"}}; @file reads a file
-  --no-mcp          start from an empty MCP set (no desktop servers inherited)
+                    {"name":{"type":"http","url","headers"}}; @file reads a file.
+                    Hermetic default: only these run (deterministic, fast)
+  --mcp-inherit     also inherit the desktop's enabled MCP servers
   --mcp-list        print the effective MCP server set as JSON and exit
   --skills <dir>    add skills (repeatable): one skill dir (has SKILL.md) or a
                     root of <name>/SKILL.md dirs. project <cwd>/.zcode/skills
@@ -103,7 +104,7 @@ function parseArgv(argv) {
       prompt: undefined,
       session: undefined,
       mcpSpecs: [],
-      noMcp: false,
+      mcpInherit: false,
       mcpList: false,
       skillsDirs: [],
       noSkills: false,
@@ -128,7 +129,7 @@ function parseArgv(argv) {
   const boolFlags = new Map([
     ['--json', 'json'],
     ['--fresh', 'fresh'],
-    ['--no-mcp', 'noMcp'],
+    ['--mcp-inherit', 'mcpInherit'],
     ['--mcp-list', 'mcpList'],
     ['--no-skills', 'noSkills'],
     ['--include-reasoning', 'includeReasoning'],

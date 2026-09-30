@@ -44,13 +44,16 @@ test('--mcp-list prints the effective server set including the added server', as
   assert.equal(parsed.servers['word-server'].type, 'stdio');
 });
 
-test('--no-mcp empties the inherited server set', async () => {
-  const { code, stdout, stderr } = await cli(['--no-mcp', '--mcp-list'], {
-    timeoutMs: 120000,
-  });
-  assert.equal(code, 0, stderr.trim());
-  const parsed = JSON.parse(stdout.trim().split('\n').pop());
-  assert.deepEqual(parsed.servers, {});
+test('default MCP set is hermetic (empty); --mcp-inherit lists the desktop servers', async () => {
+  const hermetic = await cli(['--mcp-list'], { timeoutMs: 120000 });
+  assert.equal(hermetic.code, 0, hermetic.stderr.trim());
+  const empty = JSON.parse(hermetic.stdout.trim().split('\n').pop());
+  assert.deepEqual(empty.servers, {}, 'no --mcp and no --mcp-inherit means no servers');
+
+  const inherited = await cli(['--mcp-inherit', '--mcp-list'], { timeoutMs: 120000 });
+  assert.equal(inherited.code, 0, inherited.stderr.trim());
+  const set = JSON.parse(inherited.stdout.trim().split('\n').pop());
+  assert.ok(Object.keys(set.servers).length >= 1, 'desktop has enabled servers to inherit');
 });
 
 // LIVE. One retry on content mismatch / turn failure / timeout, never on
@@ -68,18 +71,22 @@ test('LIVE --mcp: engine spawns the server and the model calls its tool', async 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
         ['--json', '--mcp', wordServerSpec(), '--cwd', work, prompt],
-        { cwd: work, timeoutMs: 300000 }
+        { cwd: work, timeoutMs: 420000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {
         assert.fail(`config error exit ${code}: ${stderr.trim()}`);
       }
       if (code === 0) {
-        const result = JSON.parse(stdout.trim().split('\n').pop());
+        const events = stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        const result = events[events.length - 1];
         if (result.ok && (result.response || '').trim() === 'PAPAYA') {
           last = { pass: result };
           break;
         }
-        last = { retryable: `response mismatch: ${JSON.stringify(result.response).slice(0, 200)}` };
+        const mcpEvents = events.filter((e) => e.type === 'mcp').map((e) => `${e.name}:${e.status}`).join(' ');
+        last = {
+          retryable: `response mismatch: ${JSON.stringify(result.response).slice(0, 150)} [mcp events: ${mcpEvents || 'none'}]`,
+        };
       } else {
         last = { retryable: `exit ${code}: ${stderr.trim().slice(0, 400)}` };
       }

@@ -74,9 +74,11 @@ GLM-5.3 reasons before it answers, and the CLI never hides it:
 
 ## MCP servers
 
-MCP config is inherited from the desktop (`~/.zcode/cli/config.json`,
-enabled servers only) into the isolated scratch HOME — then `--mcp` adds
-servers per invocation without touching anything global:
+**Hermetic by default**: a run gets only the MCP servers you pass with
+`--mcp` — deterministic and fast. `--mcp-inherit` opts into the desktop's
+enabled servers (`~/.zcode/cli/config.json`) as a base; note some desktop
+servers use browser OAuth and can never complete headless, which is exactly
+why inheritance is opt-in.
 
 ```sh
 # stdio server (JSON inline or @file)
@@ -86,16 +88,17 @@ zai-code --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"
 # remote server
 zai-code --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' …
 
-zai-code --mcp @servers.json --mcp-list   # print the effective set as JSON
-zai-code --no-mcp …                        # hermetic: no servers at all (then --mcp still adds)
+zai-code --mcp @servers.json --mcp-list        # print the effective set as JSON
+zai-code --mcp-inherit --mcp-list              # desktop servers + yours
 ```
 
-The CLI **waits for explicitly-added servers to finish connecting** before
-sending the prompt (stdio servers spawn asynchronously; without the wait the
-first turn can miss them), emits `{"type":"mcp","name","status","toolCount"}`
-events in `--json` mode, and lists the effective servers in the result
-(`mcpServers`). Config schema per server: `{"type":"stdio","command","args","env","cwd"}`
-or `{"type":"http"|"sse","url","headers"}` (plus optional `enabled`,
+The CLI **forces and waits for explicitly-added servers to finish
+connecting** before sending the prompt (stdio servers spawn asynchronously;
+without the wait the first turn can miss them), emits
+`{"type":"mcp","name","status","toolCount"}` events in `--json` mode, and
+lists the effective servers in the result (`mcpServers`). Config schema per
+server: `{"type":"stdio","command","args","env","cwd"}` or
+`{"type":"http"|"sse","url","headers"}` (plus optional `enabled`,
 `timeoutMs`). Overlays are recomputed per run — one run's `--mcp` never
 leaks into the next.
 
@@ -260,7 +263,7 @@ from the `session/subagents` RPC joined with the on-disk agent artifacts.
 --profile <name>  subagent profile for `agent` (default: general-purpose)
 --session <id>    continue a previous session (multi-turn)
 --mcp <json|@f>   add MCP servers (repeatable; stdio/http/sse)
---no-mcp          hermetic: inherit no MCP servers
+--mcp-inherit     also inherit the desktop's enabled MCP servers
 --mcp-list        print effective MCP servers as JSON, exit
 --skills <dir>    inject skill(s) for this run (repeatable)
 --no-skills       empty skill set for this run
