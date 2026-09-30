@@ -1,0 +1,23 @@
+{
+  "name": "zai-code",
+  "version": "0.1.0",
+  "description": "GLM-5.3 / GLM-5.3-Flash coding CLI wrapping the ZCode engine's app-server over stdio",
+  "license": "MIT",
+  "private": false,
+  "bin": {
+    "zai-code": "bin/zai-code.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}
