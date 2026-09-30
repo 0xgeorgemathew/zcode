@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // zai-code — CLI entry: argv parsing + command dispatch (DESIGN §10).
-const { normalizeModel, unknownModelMessage, DEFAULT_MODEL } = require('../lib/models.js');
+const { normalizeModel, unknownModelMessage, normalizeEffort, EFFORT_LEVELS, DEFAULT_MODEL } = require('../lib/models.js');
 
 const EXIT = {
   OK: 0,
@@ -118,6 +118,15 @@ function parseArgv(argv) {
   const model = normalizeModel(out.flags.model);
   if (!model) fail(EXIT.USAGE, unknownModelMessage(out.flags.model));
   out.flags.model = model;
+
+  const effort = normalizeEffort(out.flags.effort);
+  if (!effort) {
+    fail(
+      EXIT.USAGE,
+      `unknown effort "${out.flags.effort}". --effort accepts ${EFFORT_LEVELS.join(' | ')}.`
+    );
+  }
+  out.flags.effort = effort;
   return out;
 }
 
