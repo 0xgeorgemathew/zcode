@@ -1,7 +1,7 @@
 {
   "name": "@0xgeorgemathew/zcode",
-  "version": "0.2.0",
-  "description": "GLM-5.3 / GLM-5.3-Flash coding CLI wrapping the ZCode engine's app-server over stdio",
+  "version": "0.3.0",
+  "description": "Headless GLM-5.3 / GLM-5.3-Flash coding CLI for agents: streaming thinking, subagents, MCP servers, skills, session continuity. Wraps the ZCode engine. Zero dependencies.",
   "license": "MIT",
   "private": false,
   "bin": {
@@ -23,5 +23,19 @@
     "accept:flash": "node scripts/accept.js flash",
     "accept:subagent": "node scripts/accept.js subagent",
     "accept:53": "node scripts/accept.js glm53"
-  }
+  },
+  "keywords": [
+    "glm",
+    "glm-5.3",
+    "zai",
+    "zcode",
+    "cli",
+    "coding-agent",
+    "agent",
+    "llm",
+    "mcp",
+    "subagent",
+    "headless",
+    "ndjson"
+  ]
 }

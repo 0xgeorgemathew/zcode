@@ -70,7 +70,7 @@ test('LIVE --json: reasoning_delta events stream and the result reports reasonin
   }
 });
 
-test('LIVE plain mode: reasoning mirrors to stderr while stdout stays the answer', async () => {
+test('LIVE plain mode: thinking streams as a distinct block; stdout stays the answer', async () => {
   preconditions();
   const work = mkdtempSync(path.join(tmpdir(), 'zcode-reason-plain-'));
   try {
@@ -80,10 +80,13 @@ test('LIVE plain mode: reasoning mirrors to stderr while stdout stays the answer
     });
     assert.equal(code, 0, stderr.trim().slice(0, 400));
     assert.equal(stdout.trim(), '391', 'stdout carries only the answer');
+    const thinkingLines = stderr.split('\n').filter((l) => l.startsWith('│'));
     assert.ok(
-      stderr.includes('[reasoning]') && stderr.length > '[reasoning] '.length + 10,
-      'reasoning mirrored to stderr while running'
+      thinkingLines.length >= 1 && thinkingLines.join('').length > 10,
+      'thinking mirrored to stderr as │-prefixed lines, visually distinct from the answer'
     );
+    assert.match(stderr, /GLM-5\.3-Flash/, 'status footer carries the engine-reported model');
+    assert.match(stderr, /effort max/, 'status footer carries the effort');
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

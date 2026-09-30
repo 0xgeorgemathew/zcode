@@ -1,152 +1,102 @@
 # zcode
 
-A thin, zero-dependency Node CLI for headless **GLM-5.3 / GLM-5.3-Flash**
-coding turns. It drives the ZCode engine's `app-server --stdio` JSON
-protocol, so it inherits the full agentic runtime — subagents that do real
-work, MCP servers, skills — behind a small, scriptable surface built for
-**agent callers, not humans**: NDJSON events, stable result line, explicit
-exit codes, session continuity.
+Headless GLM-5.3 / GLM-5.3-Flash turns for agents, with the full agentic runtime underneath: subagents that do real work, MCP servers, skills, session memory. Zero dependencies. One binary, NDJSON out.
+
+Built for agent callers, not humans: stable machine contract on stdout, everything a watcher needs on stderr, explicit exit codes, no surprises.
+
+```text
+$ zcode "What is 17*23? Reason carefully, then reply with only the number."
+│ The user wants 17 * 23. Simple math. 17*23 = 17*20 + 17*3 = 340 + 51 = 391. Reply with only the number.
+391
+  GLM-5.3-Flash  ·  effort max  ·  0 tool calls  ·  9.1s  ·  sess_03bf3114-44
+```
+
+That is a real transcript. Thinking streams as a dimmed quote block on stderr, the answer lands alone on stdout, and a status line closes the turn. What you pipe is exactly what the model answered.
+
+[![npm](https://img.shields.io/npm/v/@0xgeorgemathew/zcode.svg)](https://www.npmjs.com/package/@0xgeorgemathew/zcode)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+&nbsp;
 
 ## Install
 
 ```sh
-npm install -g zcode
+npm install -g @0xgeorgemathew/zcode
 ```
 
-Requirements: node ≥ 20 for the CLI (≥ 26 recommended for the engine child —
-see [Engine requirements](#engine-requirements)), and the ZCode engine on the
-machine (today: the copy bundled with the ZCode desktop app, resolved
-automatically; `ZAI_CODE_ENGINE` can point elsewhere). Zero runtime
-dependencies.
+Needs node 20 or newer for the CLI, 26 recommended for the engine child, plus the ZCode engine on the machine (today: the copy bundled with the ZCode desktop app, resolved automatically).
 
-## Usage
+&nbsp;
+
+## Start in three commands
 
 ```sh
-# 1. Configure your Z.AI API key (never printed, stored mode 600)
-echo "$ZAI_API_KEY" | zcode login     # or just export ZAI_API_KEY
-
-# 2. Sanity-check the setup (engine, scratch HOME, key)
-zcode doctor
-
-# 3. One-shot turn (default model: glm-5.3-flash, default effort: max)
+echo "$ZAI_API_KEY" | zcode login    # store your Z.AI key (mode 600, never printed)
+zcode doctor                         # check engine, isolation, key
 zcode "Explain this repo in two sentences"
-zcode --model glm-5.3 --effort high --json "Reply with exactly: OK"
-
-# 4. Dispatch a subagent that must do real work (verified, not trusted)
-zcode agent --cwd "$WORK" "Use the Agent tool to create hello.txt containing HELLO-SUBAGENT"
 ```
 
-Full option reference and the `--json` contract are at the bottom.
+&nbsp;
 
-## Models and effort
-
-| | |
-|---|---|
-| Allowed models | `glm-5.3` (GLM-5.3) and `glm-5.3-flash` (GLM-5.3-Flash) — aliases: `5.3`, `53`, `5.3-flash`, `flash`, `53f`. Anything else exits 2 **before any engine spawn or API call**. |
-| Default model | `glm-5.3-flash` (cheap/fast; `--model glm-5.3` for the acceptance-grade model) |
-| Effort | `--effort low\|medium\|high\|xhigh\|max`, default **max**. Sent on every turn (`session/create` `model.options.reasoningLevel` + `thoughtLevel`, `session/send` `modelSelection.options.reasoningLevel`); verified on the wire via the engine's own rollout captures (`request.body.output_config.effort`). Levels beyond low/high/max may be rejected per-model; errors surface verbatim with exit 5. |
-
-## Yolo mode and the `--cwd` blast radius
-
-All sessions run in **yolo mode**: the wrapper forces `mode:"yolo"` right
-after `session/create` (`session/setMode`), matching the engine's own `-p`
-default, so tool side effects — including subagent file writes — are
-auto-approved and never stall on an interactive permission prompt. The
-declared blast radius is the session workspace: `--cwd <dir>` (default
-`process.cwd()`). Point it at a directory you are willing to let the agent
-modify. As defense in depth the client still answers any
-`interaction/requestPermission` with an explicit allow, and any
-`interaction/requestUserInput` fails the run immediately (exit 5) — a
-headless script has no user.
-
-## Thinking (reasoning) while it runs
-
-GLM-5.3 reasons before it answers, and the CLI never hides it:
-
-- `--json`: `{"type":"stream","kind":"reasoning_delta","delta":"…"}` events
-  stream live on stdout alongside `text_delta` — an agent can watch thinking
-  and answer text as they arrive.
-- plain mode: reasoning is mirrored to **stderr** live (dimmed on a TTY,
-  prefixed `[reasoning] `) while stdout carries only the answer — pipe
-  stdout, watch stderr. `--quiet` suppresses the mirror.
-- the final result reports `reasoningChars`, and `--include-reasoning` adds
-  the full `reasoning` text to the result line.
-
-## MCP servers
-
-**Hermetic by default**: a run gets only the MCP servers you pass with
-`--mcp` — deterministic and fast. `--mcp-inherit` opts into the desktop's
-enabled servers (`~/.zcode/cli/config.json`) as a base; note some desktop
-servers use browser OAuth and can never complete headless, which is exactly
-why inheritance is opt-in.
+## Ask
 
 ```sh
-# stdio server (JSON inline or @file)
-zcode --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
-         "Call get_magic_word and reply with exactly what it returns"
-
-# remote server
-zcode --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' …
-
-zcode --mcp @servers.json --mcp-list        # print the effective set as JSON
-zcode --mcp-inherit --mcp-list              # desktop servers + yours
+zcode "Reply with exactly: OK"                          # GLM-5.3-Flash, effort max
+zcode --model glm-5.3 "Reply with exactly: OK"          # GLM-5.3
+zcode --effort high "Draft a commit message"            # low | medium | high | xhigh | max
+echo "$PROMPT" | zcode                                  # prompt via stdin
 ```
 
-The CLI **forces and waits for explicitly-added servers to finish
-connecting** before sending the prompt (stdio servers spawn asynchronously;
-without the wait the first turn can miss them), emits
-`{"type":"mcp","name","status","toolCount"}` events in `--json` mode, and
-lists the effective servers in the result (`mcpServers`). Config schema per
-server: `{"type":"stdio","command","args","env","cwd"}` or
-`{"type":"http"|"sse","url","headers"}` (plus optional `enabled`,
-`timeoutMs`). Overlays are recomputed per run — one run's `--mcp` never
-leaks into the next.
+Only `glm-5.3` and `glm-5.3-flash` (plus short aliases) are accepted. Anything else exits 2 before any engine spawn or API call. Default effort is max.
 
-## Skills
+&nbsp;
 
-Two ways, both real (the model loads them through its Skill tool):
+## Watch it work
 
-- **Project skills, zero flags**: put `<name>/SKILL.md` under
-  `<workspace>/.zcode/skills/` (the engine walks the workspace; no copy, no
-  flag — `--cwd` is all it takes).
-- **Injected skills**: `--skills <dir>` where dir is one skill (has
-  `SKILL.md`) or a root of `<name>/SKILL.md` dirs — copied into the scratch
-  HOME for this run, removed afterwards (`skillsInjected` in the result).
-  `--no-skills` runs with an empty skill set.
+Plain mode keeps two streams apart on purpose:
 
-User skills from the desktop (`~/.zcode/skills`) are inherited into the
-scratch HOME at build time (count in `zcode doctor`).
+- **stdout** carries the answer, nothing else. Pipe it, capture it, trust it.
+- **stderr** is the live feed, all dimmed so it visually recedes: thinking as `│ ` quote lines, tool calls as `→ started` / `✓ ok` / `✗ error`, then one status line with model, effort, tool count, duration, and the session id.
 
-## Session continuity (multi-turn agents)
+```text
+$ zcode "Create a file named note.txt containing exactly the word ready, then reply with just: DONE"
+│ This is a trivial task: create note.txt containing exactly the word "ready", then reply with just "DONE".
+│ …
+→ Write started
+DONE
+  GLM-5.3-Flash  ·  effort max  ·  1 tool call  ·  11.1s  ·  sess_e9fc3633-3b
+```
 
-Every result carries `sessionId`; sessions persist in the scratch HOME's
-SQLite store, so a later CLI invocation — a new engine process — continues
-the same conversation:
+`--quiet` silences the stderr feed. `--include-reasoning` puts the full thinking text into the JSON result line.
+
+&nbsp;
+
+## Continue a conversation
+
+Every result carries a `sessionId`. Sessions persist on disk, so a later invocation, in a new process, picks up the same thread:
 
 ```sh
 SID=$(zcode --json "Remember the secret word BANANA. Reply with exactly: OK" | tail -1 | jq -r .sessionId)
-zcode --session "$SID" "Reply with only the secret word I told you."   # → BANANA
+
+zcode --session "$SID" "Reply with only the secret word I told you."    # -> BANANA
 ```
 
-The continued result line has `"resumed": true` and the same `sessionId`.
+The continued result line reports `"resumed": true` with the same `sessionId`. The status footer shows the short id so plain-mode callers can continue without a JSON round-trip.
 
-## Subagents
+&nbsp;
 
-`zcode agent` wraps your instructions in a dispatch-forcing preamble (the
-model MUST call the in-session `Agent` tool), runs the turn in yolo mode, and
-then verifies the outcome programmatically — it never trusts the prose. Exit
-0 only if the parent turn succeeded AND at least one subagent ended with
-status `success` (exit 6 otherwise). Use `--cwd` to declare where the
-subagent may work:
+## Dispatch a subagent
+
+`zcode agent` forces a dispatch through the Agent tool and verifies the outcome programmatically. It never trusts the model's prose: exit 0 only if the parent turn succeeded and at least one subagent ended with status `success`.
 
 ```sh
 WORK=$(mktemp -d)
-zcode agent --json --cwd "$WORK" --profile general-purpose \
-  "Use the Agent tool to create the file hello.txt in the current directory containing exactly HELLO-SUBAGENT, then report the agent id." \
-  | tail -1 | jq .subagents
+zcode agent --cwd "$WORK" \
+  "Use the Agent tool to create hello.txt containing exactly HELLO-SUBAGENT, then report the agent id."
+cat "$WORK/hello.txt"        # HELLO-SUBAGENT
 ```
 
-The final `--json` line carries the joined, engine-reported evidence:
+Use `--cwd` to declare where the subagent may work. `--profile` picks the subagent profile (default `general-purpose`; your own `~/.zcode/agents/*.md` profiles resolve too). With `--json`, the final line carries the engine-reported evidence:
 
 ```json
 "subagents": [{
@@ -155,91 +105,95 @@ The final `--json` line carries the joined, engine-reported evidence:
   "profileId": "general-purpose",
   "status": "success",
   "summary": "…the subagent's own report…",
-  "output": "…",
   "durationMs": 59765
 }]
 ```
 
-Built-in profiles (like `general-purpose`) need no setup; user-defined
-profiles under `~/.zcode/agents/*.md` are carried into the scratch HOME so
-they keep resolving (custom-profile resolution is documented, not test-gated).
-Note `status:"success"` means the subagent *returned* — when the work itself
-matters, check the artifact, which is exactly what the acceptance gate does
-(`accept:subagent` asserts `done.txt` content byte-for-byte).
+&nbsp;
 
-## Isolation: your live `~/.zcode` is never touched
+## MCP servers
 
-`zcode` never writes to the desktop app's state. The engine is spawned
-with `HOME` pointed at a scratch copy that this package owns
-(`~/.zcode/home`, mode 700), built once and mtime-cached
-(`zcode doctor --fresh` rebuilds):
+Hermetic by default: a run registers only the servers you pass. `--mcp` takes inline JSON or `@file`, repeatable; stdio, http, and sse are supported.
 
-- Only the **top-level files** of `~/.zcode/v2` are copied (JSON state
-  files). The 1.2 GB of logs/sessions/checkpoints and the sqlite index are
-  not. **Your OAuth `credentials.json` is deliberately never copied** — the
-  account providers are structurally inoperative inside the scratch, and the
-  copy was live-verified to still register `zai-api/GLM-5.3-Flash`.
-- The scratch `provider_config.json` keeps **only** the `zai-api` rule, with
-  its `access.apiKey` swapped to the key this package resolved (mode 600).
-  Imported third-party rules are pruned.
-- `~/.zcode/agents/*.md` and `~/.zcode/AGENTS.md` are copied so
-  user-defined agent profiles resolve; the built-in profiles (e.g.
-  `general-purpose`) need no copy.
-- Uncontrolled env overrides (`ZCODE_STORAGE_DIR`, `ZCODE_DATA_BASE_DIR`,
-  `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`, `ANTHROPIC_API_KEY`,
-  `ANTHROPIC_BASE_URL`) are deleted from the child environment; the builtin
-  provider config is pinned via `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`.
-- On a fresh machine with no `~/.zcode` at all, a minimal provider config is
-  synthesized — **experimental/unproven**; `doctor` reports
-  `"isolationMode":"synthesized"` for that path.
+```sh
+zcode --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
+      "Call get_magic_word and reply with exactly what it returns"
 
-Your real workspace (`--cwd`) is of course used for real work — config is
-isolated, work is not.
+zcode --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' \
+      "Look up the MCP spec section on tools"
 
-## Key handling
+zcode --mcp @servers.json --mcp-list      # print the effective set as JSON
+zcode --mcp-inherit …                     # also load the desktop's enabled servers
+```
 
-`ZAI_API_KEY` env var → `~/.zcode/credentials.json` (written by
-`zcode login`, mode 600 under a mode-700 root). No key → exit 3. The key
-is never printed or logged; the only file it ever lands in is the scratch
-`provider_config.json` (the engine requires it there to register the
-provider — an env-var fallback provably does not register).
+The CLI forces the connection and waits until your servers have settled before sending the prompt, so the first turn never misses a slow stdio spawn. Connection state streams to stderr (`◇ mcp word-server connected`) and into the JSON events. Inheritance is opt-in because desktop sets often include browser-OAuth servers that can never finish headless, and they stall the engine's connect pool.
 
-## Engine requirements
+&nbsp;
 
-- The engine is the one bundled with the ZCode desktop app:
-  `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` (resolved
-  automatically). Point `ZAI_CODE_ENGINE` at another copy (or a directory
-  containing `zcode.cjs`) to pin one; `zcode doctor` prints the resolved
-  path, version and sha256.
-- **node ≥ 26 recommended** for the engine child (it has only been tested
-  under v26.x). The wrapper itself only needs node ≥ 20; when the spawning
-  node is older than 26, `doctor` warns and you can set `ZAI_CODE_NODE` to
-  a newer interpreter for the engine spawn.
-- macOS today (the app-bundle path is macOS-specific; nothing else in the
-  wrapper is).
+## Skills
 
-## `--json` contract
+Two ways, both real: the model loads skills through its Skill tool.
 
-NDJSON events on stdout, final line (stable for scripts):
+- **Project skills, zero flags.** Put `<name>/SKILL.md` under `<workspace>/.zcode/skills/`. The engine walks your workspace; no copy, no flag.
+
+- **Injected per run.** `--skills <dir>` where dir is one skill (has `SKILL.md`) or a root of `<name>/SKILL.md` dirs. Copied into the isolated scratch for this run, removed after.
+
+```sh
+zcode --skills ./my-skills "Load the word-vault skill, then reply with the magic word it defines."
+```
+
+`--no-skills` runs with an empty skill set. Your desktop user skills (`~/.zcode/skills`) are inherited into the isolation automatically.
+
+&nbsp;
+
+## Machine interface
+
+`--json` emits NDJSON events on stdout with a stable final line:
 
 ```json
 {"type":"result","ok":true,"response":"…","model":"GLM-5.3-Flash","mode":"yolo",
  "effort":"max","sessionId":"sess_…","resumed":false,
  "usage":{"inputTokens":19608,"outputTokens":3},
  "reasoningChars":2531,"toolCalls":2,"toolEvents":9,
- "mcpServers":["context7","word-server"],"skillsInjected":["word-vault"],
+ "mcpServers":["word-server"],"skillsInjected":["word-vault"],
  "durationMs":21972}
 ```
 
-`model`/`effort` are engine-reported values cross-checked from the engine's
-own `model_request_started` event, not the wrapper's echo. Intermediate
-lines: `{"type":"stream","kind":"text_delta"|"reasoning_delta"|…}` (live
-deltas — reasoning_delta is the thinking), `{"type":"tool","name","phase"}`
-(tool lifecycle), `{"type":"mcp","name","status","toolCount"}` (explicit
-servers settling), `{"type":"model_request_started",…}`, `{"type":"state",…}`,
-`{"type":"turn",…}`. `agent` adds
-`"subagents":[{agentId,childSessionId,profileId,status,summary,output,…}]`
-from the `session/subagents` RPC joined with the on-disk agent artifacts.
+`model` and `effort` are engine-reported values cross-checked from the engine's own `model_request_started` event, not the wrapper's echo. A failed run still prints a final line with `"ok":false` plus the error kind, so a caller always gets one parseable frame.
+
+Event types on the way in:
+
+| event | meaning |
+|---|---|
+| `{"type":"stream","kind":"text_delta","delta":"…"}` | answer text, live |
+| `{"type":"stream","kind":"reasoning_delta","delta":"…"}` | thinking, live |
+| `{"type":"tool","name":"Bash","phase":"started"}` | tool lifecycle: scheduled, started, result, error |
+| `{"type":"mcp","name":"word-server","status":"connected","toolCount":1}` | your MCP servers settling |
+| `{"type":"model_request_started",…}` | engine-reported model and reasoning level |
+| `{"type":"state","mode":"yolo"}` | session mode |
+
+&nbsp;
+
+## Options
+
+| option | takes | default | notes |
+|---|---|---|---|
+| `--model` | id | `glm-5.3-flash` | `glm-5.3` plus aliases: `5.3`, `53`, `flash`, `5.3-flash`, `53f` |
+| `--effort` | level | `max` | `low`, `medium`, `high`, `xhigh`, `max` |
+| `--cwd` | dir | current dir | the session workspace, and the blast radius |
+| `--session` | id | new session | continue a previous conversation |
+| `--mcp` | JSON or `@file` | none | repeatable; stdio, http, sse |
+| `--mcp-inherit` | flag | off | also load desktop-enabled MCP servers |
+| `--mcp-list` | flag | | print effective servers as JSON, exit |
+| `--skills` | dir | none | repeatable; one skill or a root of skills |
+| `--no-skills` | flag | off | empty skill set for this run |
+| `--profile` | name | `general-purpose` | subagent profile for `agent` |
+| `--include-reasoning` | flag | off | full thinking text in the result line |
+| `--quiet` | flag | off | silence the stderr live feed |
+| `--json` | flag | off | NDJSON events plus result line on stdout |
+| `--timeout-ms` | number | `600000` | |
+| `--fresh` | flag | off | rebuild the isolated scratch HOME first |
+| `-p`, `--prompt` | text | | alias for the positional prompt |
 
 ## Exit codes
 
@@ -247,50 +201,39 @@ from the `session/subagents` RPC joined with the on-disk agent artifacts.
 |---|---|
 | 0 | success |
 | 1 | unexpected internal error |
-| 2 | usage error / unknown model / unknown effort |
+| 2 | usage error, unknown model, unknown effort, bad `--mcp` JSON |
 | 3 | no API key (`zcode login` or `ZAI_API_KEY`) |
 | 4 | engine or builtin provider config not found |
 | 5 | turn failed (engine error, failed terminal, user-input request) |
 | 6 | `agent`: no subagent dispatched or none ended `success` |
 | 124 | `--timeout-ms` exceeded |
+| 130 | interrupted (SIGINT) |
 
-## Options
+&nbsp;
 
-```
---model <id>      glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
---effort <level>  low | medium | high | xhigh | max. default: max
---cwd <dir>       workspace for the session (default: process.cwd())
---profile <name>  subagent profile for `agent` (default: general-purpose)
---session <id>    continue a previous session (multi-turn)
---mcp <json|@f>   add MCP servers (repeatable; stdio/http/sse)
---mcp-inherit     also inherit the desktop's enabled MCP servers
---mcp-list        print effective MCP servers as JSON, exit
---skills <dir>    inject skill(s) for this run (repeatable)
---no-skills       empty skill set for this run
---include-reasoning  full reasoning text in the result line
---quiet           no reasoning/tool mirror on stderr
---json            NDJSON events + final result line on stdout
---timeout-ms <n>  default 600000
---fresh           rebuild the scratch HOME first
--p, --prompt <t>  prompt text (alias for positional prompt; stdin works too)
---version / --help
-```
+## Under the hood
+
+**Key handling.** `ZAI_API_KEY` env var, or `zcode login` which stores it at `~/.zcode/credentials.json` (mode 600). The key is never printed or logged. The only file it ever lands in is the scratch provider config, which the engine requires to register the provider.
+
+**Isolation.** The engine runs with `HOME` pointed at a scratch copy this package owns (`~/.zcode/home`, mode 700, mtime-cached). Your live `~/.zcode`, which the desktop app is using right now, is never written to. Your OAuth `credentials.json` is deliberately never copied. The scratch keeps exactly the `zai-api` provider rule with your key, your agents, and your skills.
+
+**Yolo mode.** Sessions run with auto-approved tool side effects, matching the engine's own headless default; `--cwd` is the declared blast radius. A headless run that requests interactive user input fails fast with exit 5 rather than hanging.
+
+**Engine.** Resolved from the ZCode desktop app bundle (`zcode doctor` prints path, version, sha256). `ZAI_CODE_ENGINE` points elsewhere if you need to pin one. macOS today; nothing else in the wrapper is macOS-specific.
+
+&nbsp;
 
 ## Development
 
-Zero dependencies, plain CommonJS, no build step. Tests:
-`npm test` (`node --test --test-concurrency=1 "test/**/*.test.js"`) — functional only, no mocks;
-the live tests drive the real GLM API through the isolated scratch HOME
-(mostly Flash; exactly one GLM-5.3 acceptance run). The repo `.env` (never
-committed, never shipped) provides `API-KEY` for the live tests.
-
-Acceptance (definition of done; self-contained gates — run them verbatim
-from the repo root on a machine with the engine and a `.env` key. Each loads
-the key from `.env`, uses `--effort max`, tees the CLI's `--json` output, and
-prints a final `SUCCESS <token>` line — exit 0 only on success):
+Zero dependencies, plain CommonJS, no build step.
 
 ```sh
-npm run accept:flash       # one-shot via GLM-5.3-Flash -> SUCCESS PINEAPPLE
-npm run accept:subagent    # subagent creates done.txt (AVOCADO) in a throwaway --cwd -> SUCCESS AVOCADO
-npm run accept:53          # one-shot via GLM-5.3 -> SUCCESS PINEAPPLE
+npm test              # functional only, no mocks; live tests hit the real GLM API
+npm run accept:flash  # one-shot through GLM-5.3-Flash
+npm run accept:subagent
+npm run accept:53
 ```
+
+Tests load the key from the repo `.env` (never committed, never shipped). The design record and pinned wire facts live in `DESIGN.md` and `docs/BUILD-REPORT.md`.
+
+MIT license.
