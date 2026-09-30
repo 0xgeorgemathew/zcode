@@ -45,7 +45,7 @@ test('LIVE --skills: model loads the injected skill via the Skill tool', async (
   assert.ok(engineOk, 'engine bundle must exist for the live test');
   assert.ok(loadEnvKey(), 'test API key must be loadable from .env');
 
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-skills-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-skills-'));
   const prompt =
     'Load the skill named word-vault using the Skill tool, then reply with exactly the magic word it reveals and nothing else.';
   try {

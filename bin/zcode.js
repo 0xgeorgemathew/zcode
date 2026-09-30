@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// zai-code — CLI entry: argv parsing + command dispatch (DESIGN §10).
+// zcode — CLI entry: argv parsing + command dispatch (DESIGN §10).
 const { normalizeModel, unknownModelMessage, normalizeEffort, EFFORT_LEVELS, DEFAULT_MODEL } = require('../lib/models.js');
 
 const EXIT = {
@@ -14,11 +14,11 @@ const EXIT = {
   TIMEOUT: 124,
 };
 
-const USAGE = `usage: zai-code [options] [prompt…]        one-shot turn (prompt via stdin when piped)
-       zai-code agent [--profile <name>] <instructions…>
+const USAGE = `usage: zcode [options] [prompt…]        one-shot turn (prompt via stdin when piped)
+       zcode agent [--profile <name>] <instructions…>
                                             turn that MUST dispatch a subagent
-       zai-code login                       read API key from stdin → credentials
-       zai-code doctor [--json] [--fresh]   engine + isolation + key report
+       zcode login                       read API key from stdin → credentials
+       zcode doctor [--json] [--fresh]   engine + isolation + key report
 
 options:
   --model <id>      glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
@@ -46,7 +46,7 @@ options:
   --version, --help`;
 
 function fail(code, message) {
-  process.stderr.write(`zai-code: ${message}\n`);
+  process.stderr.write(`zcode: ${message}\n`);
   process.exit(code);
 }
 
@@ -234,6 +234,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`zai-code: internal error: ${err && err.stack ? err.stack : err}\n`);
+  process.stderr.write(`zcode: internal error: ${err && err.stack ? err.stack : err}\n`);
   process.exit(EXIT.INTERNAL);
 });

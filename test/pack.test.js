@@ -20,7 +20,7 @@ const ALLOWED_ROOTS = new Set([
 ]);
 
 test('npm pack ships only the allowlist and no key material', () => {
-  const dest = mkdtempSync(path.join(tmpdir(), 'zai-code-pack-'));
+  const dest = mkdtempSync(path.join(tmpdir(), 'zcode-pack-'));
   try {
     const raw = execFileSync('npm', ['pack', '--json', '--pack-destination', dest], {
       cwd: repoRoot,
@@ -38,7 +38,7 @@ test('npm pack ships only the allowlist and no key material', () => {
       .map((l) => l.replace(/^package\//, ''))
       .filter((p) => p.length > 0 && !p.endsWith('/'));
 
-    assert.ok(paths.includes('bin/zai-code.js'), 'bin entry ships');
+    assert.ok(paths.includes('bin/zcode.js'), 'bin entry ships');
     assert.ok(paths.includes('README.md'), 'README ships');
     assert.ok(paths.includes('LICENSE'), 'LICENSE ships');
     assert.ok(paths.includes('package.json'), 'package.json ships');

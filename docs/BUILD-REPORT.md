@@ -1,4 +1,4 @@
-# BUILD-REPORT — `zai-code` v0.2.0
+# BUILD-REPORT — `zcode` v0.2.0
 
 Status: **built, verified, prepared for npm publishing — NOT published.**
 Report date: 2026-09-30 (v0.1.0 baseline; same-day v0.2.0 adds MCP, skills,
@@ -8,7 +8,7 @@ explicitly attributed to design/review record (cited as DESIGN.md).
 
 ## What was built (v0.2.0 additions)
 
-`zai-code` — a zero-dependency CommonJS Node CLI (`bin/` + `lib/`, no build
+`zcode` — a zero-dependency CommonJS Node CLI (`bin/` + `lib/`, no build
 step, `"dependencies": {}`) that wraps the ZCode engine bundled with the
 desktop app (`/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`,
 v0.16.9), driven headless as `app-server --stdio` over newline-delimited
@@ -16,10 +16,10 @@ JSON. v0.2.0 turns it from a one-shot runner into an agent-facing tool:
 
 | Piece | Where |
 |---|---|
-| argv parsing, command dispatch, exit codes 0/1/2/3/4/5/6/124/130(SIGINT) | `bin/zai-code.js` |
+| argv parsing, command dispatch, exit codes 0/1/2/3/4/5/6/124/130(SIGINT) | `bin/zcode.js` |
 | model allowlist (GLM-5.3 / GLM-5.3-Flash only; aliases; default Flash) + effort enum (low–max, default max) | `lib/models.js` |
 | engine + builtin provider config resolution (`ZAI_CODE_ENGINE`, PATH, app bundle; `ZAI_CODE_BUILTIN_PROVIDER_CONFIG`) | `lib/engine.js` |
-| API key resolution (`ZAI_API_KEY` → `~/.zai-code/credentials.json`, mode 600) | `lib/key.js` |
+| API key resolution (`ZAI_API_KEY` → `~/.zcode/credentials.json`, mode 600) | `lib/key.js` |
 | scratch-HOME isolation (v2 top-level files minus `credentials.json`, zai-api rule prune + key swap, cli config hygiene, agents copy, **skills copy**, mtime-cached stamp, synthesized fresh-machine path) | `lib/isolation.js` |
 | **per-run overlays**: MCP servers (`--mcp`/`--no-mcp`, recomputed from live config each run — no leakage between runs) and skill injection (`--skills`, manifest-cleaned) | `lib/overlay.js` |
 | NDJSON app-server client + turn orchestration (yolo ladder, server-request policies, streaming **incl. reasoning_delta**, **tool lifecycle events**, **mcp settle events + waitForMcp**, engine-reported model evidence, terminal detection, **session/resume**) | `lib/appserver.js` |
@@ -34,40 +34,40 @@ SQLite); prompts via stdin; `reasoningChars`/`toolCalls`/`toolEvents`/
 `--include-reasoning`; reasoning mirrored to stderr live in plain mode
 (`--quiet` to suppress); tool lines on stderr; SIGINT → exit 130.
 
-Product behaviors: one-shot turns (`zai-code [prompt…]`), subagent dispatch
-with programmatic verification (`zai-code agent`), key onboarding
-(`zai-code login`), and a diagnostics report (`zai-code doctor [--json]
+Product behaviors: one-shot turns (`zcode [prompt…]`), subagent dispatch
+with programmatic verification (`zcode agent`), key onboarding
+(`zcode login`), and a diagnostics report (`zcode doctor [--json]
 [--fresh]`, never prints the key, warns when node < 26). All sessions run in
 yolo mode; `--cwd` is the declared blast radius.
 
 ## How to use it
 
 ```sh
-npm install -g zai-code            # once published
-echo "$ZAI_API_KEY" | zai-code login
-zai-code doctor
+npm install -g zcode            # once published
+echo "$ZAI_API_KEY" | zcode login
+zcode doctor
 
-zai-code "Explain this repo in two sentences"
-zai-code --model glm-5.3 --effort high --json "Reply with exactly: OK"
+zcode "Explain this repo in two sentences"
+zcode --model glm-5.3 --effort high --json "Reply with exactly: OK"
 
 # watch it think: plain mode mirrors reasoning to stderr while stdout stays the answer
-zai-code "What is 17*23? Reason carefully, reply with only the number."
+zcode "What is 17*23? Reason carefully, reply with only the number."
 
 # MCP server for this run only (stdio or http/sse; CLI waits for it to connect)
-zai-code --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
+zcode --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
          "Call get_magic_word and reply with exactly what it returns"
-zai-code --mcp @servers.json --mcp-list      # effective set as JSON
-zai-code --no-mcp …                          # hermetic
+zcode --mcp @servers.json --mcp-list      # effective set as JSON
+zcode --no-mcp …                          # hermetic
 
 # skills: project workspace skills need no flags (<workspace>/.zcode/skills/<name>/SKILL.md)
-zai-code --skills ./my-skills "Load the word-vault skill, reply with the magic word"
+zcode --skills ./my-skills "Load the word-vault skill, reply with the magic word"
 
 # multi-turn: continue a session from a previous invocation
-SID=$(zai-code --json "Remember BANANA. Reply OK" | tail -1 | jq -r .sessionId)
-zai-code --session "$SID" "Reply with only the secret word."
+SID=$(zcode --json "Remember BANANA. Reply OK" | tail -1 | jq -r .sessionId)
+zcode --session "$SID" "Reply with only the secret word."
 
 WORK=$(mktemp -d)
-zai-code agent --json --cwd "$WORK" --profile general-purpose \
+zcode agent --json --cwd "$WORK" --profile general-purpose \
   "Use the Agent tool to create the file hello.txt in the current directory containing exactly HELLO-SUBAGENT, then report the agent id." \
   | tail -1 | jq .subagents
 ```
@@ -88,7 +88,7 @@ Result (v0.1.0 baseline): 10 tests / 10 pass; v0.2.0 adds 4 test files
 (mcp, skills, reasoning, session — live where they prove real wiring).
 Headless, no watch mode, key loaded from the repo `.env` (`API-KEY`,
 line-parsed). The suite is functional-only — no mocks; every test drives
-`bin/zai-code.js` as a real child process, and the live tests hit the real
+`bin/zcode.js` as a real child process, and the live tests hit the real
 GLM API through the isolated scratch HOME:
 
 | test | what it proves |
@@ -115,7 +115,7 @@ per the design's own step-0 instruction.
 
 The first MCP implementation was flaky (coin-flip tool availability).
 Root causes, found by instrumenting the fixture and reading the engine's
-own JSONL logs (`~/.zai-code/home/.zcode/cli/log/`):
+own JSONL logs (`~/.zcode/home/.zcode/cli/log/`):
 
 1. **Connections are lazy and must be forced.** The engine connects MCP
    servers asynchronously; only `mcp/list mode:"connect"` starts them.
@@ -156,11 +156,11 @@ exit 1 with `accept: no API-KEY found in .env at the repo root`.
 
 ### Packaging preparation — verified this session
 
-- `npm view zai-code version` → **E404 Not Found** (registry.npmjs.org,
-  2026-09-30 15:17 UTC): the name `zai-code` is available. DESIGN.md §15
+- `npm view zcode version` → **E404 Not Found** (registry.npmjs.org,
+  2026-09-30 15:17 UTC): the name `zcode` is available. DESIGN.md §15
   records the fallback (`zcode-glm`, also E404 as of the design session) if
   it is squatted on publish day.
-- `package.json`: `bin: {"zai-code": "bin/zai-code.js"}`; `files:
+- `package.json`: `bin: {"zcode": "bin/zcode.js"}`; `files:
   ["bin","lib","README.md","LICENSE"]` (source + bin + README + LICENSE;
   `.env`/`test/`/`DESIGN.md`/`docs/`/`scripts/` are excluded by the
   allowlist and their exclusion is test-enforced); `engines: {"node":
@@ -200,7 +200,7 @@ exit 1 with `accept: no API-KEY found in .env at the repo root`.
 - **Effort levels `medium`/`xhigh`** — accepted by the CLI per the bundle
   schema but never exercised live; GLM-5.3's level set was never observed
   (R5). Errors would surface verbatim with exit 5.
-- **Interactive TTY prompt path** (`zai-code` with no args on a TTY) —
+- **Interactive TTY prompt path** (`zcode` with no args on a TTY) —
   reads stdin when piped; the TTY no-prompt path just exits 2.
 - **`npm audit` / license scanning of dependencies** — trivially empty
   (zero dependencies), not run as a check.
@@ -227,6 +227,6 @@ exit 1 with `accept: no API-KEY found in .env at the repo root`.
 - First run on a machine pays the one-time isolation build + engine spawn
   (~1 s build here; 1.2 GB source dir is NOT copied wholesale — top-level
   JSON files only); later runs are spawn-only (`--fresh` forces rebuild).
-- `zai-code login` was verified manually (scratch home, mode 600, no key
+- `zcode login` was verified manually (scratch home, mode 600, no key
   echo) rather than by a suite test — the design's test tally is fixed at
   8 files / 10 cases.

@@ -1,13 +1,13 @@
 'use strict';
 // Shared test infrastructure (not a test): loads the repo .env's hyphenated
 // API-KEY line (never printing it) and exposes cli(args, opts) which spawns
-// bin/zai-code.js as a real child process.
+// bin/zcode.js as a real child process.
 const { readFileSync, existsSync, statSync } = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
-const binPath = path.join(repoRoot, 'bin', 'zai-code.js');
+const binPath = path.join(repoRoot, 'bin', 'zcode.js');
 const DEFAULT_ENGINE = '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs';
 
 // Parse .env line-wise: the variable is hyphenated ("API-KEY=..."), so

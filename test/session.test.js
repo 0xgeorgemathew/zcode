@@ -18,7 +18,7 @@ function preconditions() {
 
 test('LIVE --session: second process remembers the first turn', async () => {
   preconditions();
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-session-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-session-'));
   try {
     let sessionId = null;
     for (let attempt = 1; attempt <= 2; attempt++) {

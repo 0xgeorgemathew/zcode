@@ -1,4 +1,4 @@
-# zai-code
+# zcode
 
 A thin, zero-dependency Node CLI for headless **GLM-5.3 / GLM-5.3-Flash**
 coding turns. It drives the ZCode engine's `app-server --stdio` JSON
@@ -10,7 +10,7 @@ exit codes, session continuity.
 ## Install
 
 ```sh
-npm install -g zai-code
+npm install -g zcode
 ```
 
 Requirements: node ≥ 20 for the CLI (≥ 26 recommended for the engine child —
@@ -23,17 +23,17 @@ dependencies.
 
 ```sh
 # 1. Configure your Z.AI API key (never printed, stored mode 600)
-echo "$ZAI_API_KEY" | zai-code login     # or just export ZAI_API_KEY
+echo "$ZAI_API_KEY" | zcode login     # or just export ZAI_API_KEY
 
 # 2. Sanity-check the setup (engine, scratch HOME, key)
-zai-code doctor
+zcode doctor
 
 # 3. One-shot turn (default model: glm-5.3-flash, default effort: max)
-zai-code "Explain this repo in two sentences"
-zai-code --model glm-5.3 --effort high --json "Reply with exactly: OK"
+zcode "Explain this repo in two sentences"
+zcode --model glm-5.3 --effort high --json "Reply with exactly: OK"
 
 # 4. Dispatch a subagent that must do real work (verified, not trusted)
-zai-code agent --cwd "$WORK" "Use the Agent tool to create hello.txt containing HELLO-SUBAGENT"
+zcode agent --cwd "$WORK" "Use the Agent tool to create hello.txt containing HELLO-SUBAGENT"
 ```
 
 Full option reference and the `--json` contract are at the bottom.
@@ -82,14 +82,14 @@ why inheritance is opt-in.
 
 ```sh
 # stdio server (JSON inline or @file)
-zai-code --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
+zcode --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
          "Call get_magic_word and reply with exactly what it returns"
 
 # remote server
-zai-code --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' …
+zcode --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' …
 
-zai-code --mcp @servers.json --mcp-list        # print the effective set as JSON
-zai-code --mcp-inherit --mcp-list              # desktop servers + yours
+zcode --mcp @servers.json --mcp-list        # print the effective set as JSON
+zcode --mcp-inherit --mcp-list              # desktop servers + yours
 ```
 
 The CLI **forces and waits for explicitly-added servers to finish
@@ -115,7 +115,7 @@ Two ways, both real (the model loads them through its Skill tool):
   `--no-skills` runs with an empty skill set.
 
 User skills from the desktop (`~/.zcode/skills`) are inherited into the
-scratch HOME at build time (count in `zai-code doctor`).
+scratch HOME at build time (count in `zcode doctor`).
 
 ## Session continuity (multi-turn agents)
 
@@ -124,15 +124,15 @@ SQLite store, so a later CLI invocation — a new engine process — continues
 the same conversation:
 
 ```sh
-SID=$(zai-code --json "Remember the secret word BANANA. Reply with exactly: OK" | tail -1 | jq -r .sessionId)
-zai-code --session "$SID" "Reply with only the secret word I told you."   # → BANANA
+SID=$(zcode --json "Remember the secret word BANANA. Reply with exactly: OK" | tail -1 | jq -r .sessionId)
+zcode --session "$SID" "Reply with only the secret word I told you."   # → BANANA
 ```
 
 The continued result line has `"resumed": true` and the same `sessionId`.
 
 ## Subagents
 
-`zai-code agent` wraps your instructions in a dispatch-forcing preamble (the
+`zcode agent` wraps your instructions in a dispatch-forcing preamble (the
 model MUST call the in-session `Agent` tool), runs the turn in yolo mode, and
 then verifies the outcome programmatically — it never trusts the prose. Exit
 0 only if the parent turn succeeded AND at least one subagent ended with
@@ -141,7 +141,7 @@ subagent may work:
 
 ```sh
 WORK=$(mktemp -d)
-zai-code agent --json --cwd "$WORK" --profile general-purpose \
+zcode agent --json --cwd "$WORK" --profile general-purpose \
   "Use the Agent tool to create the file hello.txt in the current directory containing exactly HELLO-SUBAGENT, then report the agent id." \
   | tail -1 | jq .subagents
 ```
@@ -169,10 +169,10 @@ matters, check the artifact, which is exactly what the acceptance gate does
 
 ## Isolation: your live `~/.zcode` is never touched
 
-`zai-code` never writes to the desktop app's state. The engine is spawned
+`zcode` never writes to the desktop app's state. The engine is spawned
 with `HOME` pointed at a scratch copy that this package owns
-(`~/.zai-code/home`, mode 700), built once and mtime-cached
-(`zai-code doctor --fresh` rebuilds):
+(`~/.zcode/home`, mode 700), built once and mtime-cached
+(`zcode doctor --fresh` rebuilds):
 
 - Only the **top-level files** of `~/.zcode/v2` are copied (JSON state
   files). The 1.2 GB of logs/sessions/checkpoints and the sqlite index are
@@ -198,8 +198,8 @@ isolated, work is not.
 
 ## Key handling
 
-`ZAI_API_KEY` env var → `~/.zai-code/credentials.json` (written by
-`zai-code login`, mode 600 under a mode-700 root). No key → exit 3. The key
+`ZAI_API_KEY` env var → `~/.zcode/credentials.json` (written by
+`zcode login`, mode 600 under a mode-700 root). No key → exit 3. The key
 is never printed or logged; the only file it ever lands in is the scratch
 `provider_config.json` (the engine requires it there to register the
 provider — an env-var fallback provably does not register).
@@ -209,7 +209,7 @@ provider — an env-var fallback provably does not register).
 - The engine is the one bundled with the ZCode desktop app:
   `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` (resolved
   automatically). Point `ZAI_CODE_ENGINE` at another copy (or a directory
-  containing `zcode.cjs`) to pin one; `zai-code doctor` prints the resolved
+  containing `zcode.cjs`) to pin one; `zcode doctor` prints the resolved
   path, version and sha256.
 - **node ≥ 26 recommended** for the engine child (it has only been tested
   under v26.x). The wrapper itself only needs node ≥ 20; when the spawning
@@ -248,7 +248,7 @@ from the `session/subagents` RPC joined with the on-disk agent artifacts.
 | 0 | success |
 | 1 | unexpected internal error |
 | 2 | usage error / unknown model / unknown effort |
-| 3 | no API key (`zai-code login` or `ZAI_API_KEY`) |
+| 3 | no API key (`zcode login` or `ZAI_API_KEY`) |
 | 4 | engine or builtin provider config not found |
 | 5 | turn failed (engine error, failed terminal, user-input request) |
 | 6 | `agent`: no subagent dispatched or none ended `success` |

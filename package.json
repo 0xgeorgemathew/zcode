@@ -1,11 +1,11 @@
 {
-  "name": "zai-code",
+  "name": "@0xgeorgemathew/zcode",
   "version": "0.2.0",
   "description": "GLM-5.3 / GLM-5.3-Flash coding CLI wrapping the ZCode engine's app-server over stdio",
   "license": "MIT",
   "private": false,
   "bin": {
-    "zai-code": "bin/zai-code.js"
+    "zcode": "bin/zcode.js"
   },
   "engines": {
     "node": ">=20"

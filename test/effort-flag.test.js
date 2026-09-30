@@ -19,7 +19,7 @@ const path = require('node:path');
 const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
 
 const SCRATCH_ROLLOUT = path.join(
-  process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zai-code'),
+  process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zcode'),
   'home',
   '.zcode',
   'cli',
@@ -65,7 +65,7 @@ test('--effort high lands on the wire (rollout output_config.effort)', async () 
   assert.ok(engineOk, 'engine bundle must exist for the live test');
   assert.ok(loadEnvKey(), 'test API key must be loadable from .env');
 
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-effort-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-effort-'));
   let outcome;
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {

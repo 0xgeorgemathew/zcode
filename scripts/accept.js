@@ -2,7 +2,7 @@
 'use strict';
 // Acceptance runners — the project's definition of done. Run them verbatim
 // via the npm scripts accept:flash / accept:subagent / accept:53 (they need
-// the engine and a repo .env key). Each mode drives bin/zai-code.js as a black box against the
+// the engine and a repo .env key). Each mode drives bin/zcode.js as a black box against the
 // real GLM API with --effort max, tees the CLI's --json output through (so
 // subagent completion is visible), verifies deterministic evidence, and
 // prints a final "SUCCESS <token>" line — exit 0 only on success.
@@ -20,7 +20,7 @@ const { tmpdir } = require('node:os');
 const path = require('node:path');
 
 const repoRoot = path.resolve(__dirname, '..');
-const binPath = path.join(repoRoot, 'bin', 'zai-code.js');
+const binPath = path.join(repoRoot, 'bin', 'zcode.js');
 const ENGINE = '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs';
 
 const ONE_SHOT_PROMPT = 'Reply with exactly the word PINEAPPLE and nothing else.';
@@ -201,7 +201,7 @@ async function main() {
 
   let lastWhy = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const work = mkdtempSync(path.join(tmpdir(), `zai-code-accept-${modeName}-`));
+    const work = mkdtempSync(path.join(tmpdir(), `zcode-accept-${modeName}-`));
     try {
       if (attempt > 1) process.stderr.write(`accept: retry after: ${lastWhy}\n`);
       const args = [...mode.cliArgs, '--cwd', work, '--timeout-ms', String(mode.timeoutMs - 60000), mode.prompt];

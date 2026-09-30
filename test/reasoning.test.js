@@ -21,7 +21,7 @@ function preconditions() {
 
 test('LIVE --json: reasoning_delta events stream and the result reports reasoningChars', async () => {
   preconditions();
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-reason-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-reason-'));
   try {
     let last;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -72,7 +72,7 @@ test('LIVE --json: reasoning_delta events stream and the result reports reasonin
 
 test('LIVE plain mode: reasoning mirrors to stderr while stdout stays the answer', async () => {
   preconditions();
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-reason-plain-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-reason-plain-'));
   try {
     const { code, stdout, stderr } = await cli(['--cwd', work, PROMPT], {
       cwd: work,

@@ -1,6 +1,6 @@
 ---
 name: word-vault
-description: Verification skill for zai-code functional tests. When loaded, it reveals the secret magic word that must be replied with exactly.
+description: Verification skill for zcode functional tests. When loaded, it reveals the secret magic word that must be replied with exactly.
 ---
 
 # Word Vault

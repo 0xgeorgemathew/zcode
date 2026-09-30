@@ -16,7 +16,7 @@ test('glm-5.3 one-shot acceptance: OK, model cross-checked on the wire', async (
   assert.ok(engineOk, 'engine bundle must exist for the live test');
   assert.ok(loadEnvKey(), 'test API key must be loadable from .env');
 
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-glm53-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-glm53-'));
   let last;
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {

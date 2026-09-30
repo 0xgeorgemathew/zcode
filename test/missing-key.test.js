@@ -9,12 +9,12 @@ const path = require('node:path');
 const { cli } = require('./helpers/env.js');
 
 test('with no key anywhere, a run exits 3 mentioning login and ZAI_API_KEY', async () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'zai-code-nokey-'));
+  const home = mkdtempSync(path.join(tmpdir(), 'zcode-nokey-'));
   const { code, stdout, stderr } = await cli(['hi'], {
     env: { ZAI_CODE_HOME: home, ZAI_API_KEY: '' },
   });
   assert.equal(code, 3, `stderr: ${stderr}`);
-  assert.match(stderr, /zai-code login/);
+  assert.match(stderr, /zcode login/);
   assert.match(stderr, /ZAI_API_KEY/);
   assert.equal(stdout, '');
 });

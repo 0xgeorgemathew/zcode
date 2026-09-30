@@ -51,7 +51,7 @@ test('Flash one-shot: OK, model+effort on the wire, yolo mode, usage, streaming'
   assert.ok(engineOk, 'engine bundle must exist for the live test');
   assert.ok(loadEnvKey(), 'test API key must be loadable from .env');
 
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-flash-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-flash-'));
   let last;
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {

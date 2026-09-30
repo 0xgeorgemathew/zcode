@@ -63,7 +63,7 @@ test('LIVE --mcp: engine spawns the server and the model calls its tool', async 
   assert.ok(engineOk, 'engine bundle must exist for the live test');
   assert.ok(loadEnvKey(), 'test API key must be loadable from .env');
 
-  const work = mkdtempSync(path.join(tmpdir(), 'zai-code-mcp-'));
+  const work = mkdtempSync(path.join(tmpdir(), 'zcode-mcp-'));
   const prompt =
     'Call the get_magic_word tool from the word-server MCP server, then reply with exactly the word it returns and nothing else.';
   try {

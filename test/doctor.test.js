@@ -1,7 +1,7 @@
 'use strict';
 // TDD step 3 — doctor builds the isolation scratch; live credential-bearing
 // config files are untouched (DESIGN §6.2, §6.4). Offline (no model call),
-// but touches the real ~/.zcode sources read-only and the real ~/.zai-code.
+// but touches the real ~/.zcode sources read-only and the real ~/.zcode.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -18,7 +18,7 @@ const { cli, loadEnvKey } = require('./helpers/env.js');
 const LIVE_V2 = path.join(os.homedir(), '.zcode', 'v2');
 const LIVE_V2_PROVIDER_CONFIG = path.join(LIVE_V2, 'provider_config.json');
 const LIVE_CLI_CONFIG = path.join(os.homedir(), '.zcode', 'cli', 'config.json');
-const SCRATCH_HOME = path.join(os.homedir(), '.zai-code', 'home');
+const SCRATCH_HOME = path.join(os.homedir(), '.zcode', 'home');
 const SCRATCH_V2 = path.join(SCRATCH_HOME, '.zcode', 'v2');
 const SCRATCH_PROVIDER_CONFIG = path.join(SCRATCH_V2, 'provider_config.json');
 
