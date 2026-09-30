@@ -72,7 +72,8 @@ test('agent dispatches a subagent that does real work inside --cwd', async () =>
     const artifact = path.join(work, 'hello.txt');
     assert.ok(existsSync(artifact), 'hello.txt created inside --cwd');
     const content = readFileSync(artifact, 'utf8');
-    assert.equal(content, 'HELLO-SUBAGENT', `exact content, got ${JSON.stringify(content)}`);
+    // Content-exact modulo a trailing newline — models routinely add one.
+    assert.equal(content.replace(/\n$/, ''), 'HELLO-SUBAGENT', `exact content, got ${JSON.stringify(content)}`);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
