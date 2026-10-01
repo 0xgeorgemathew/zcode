@@ -19,7 +19,7 @@ const path = require('node:path');
 const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
 
 const SCRATCH_ROLLOUT = path.join(
-  process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zcode'),
+  process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zcode-cli'),
   'home',
   '.zcode',
   'cli',

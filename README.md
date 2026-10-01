@@ -213,9 +213,9 @@ Event types on the way in:
 
 ## Under the hood
 
-**Key handling.** `ZAI_API_KEY` env var, or `zcode login` which stores it at `~/.zcode/credentials.json` (mode 600). The key is never printed or logged. The only file it ever lands in is the scratch provider config, which the engine requires to register the provider.
+**Key handling.** `ZAI_API_KEY` env var, or `zcode login` which stores it at `~/.zcode-cli/credentials.json` (mode 600). The key is never printed or logged. The only file it ever lands in is the scratch provider config, which the engine requires to register the provider.
 
-**Isolation.** The engine runs with `HOME` pointed at a scratch copy this package owns (`~/.zcode/home`, mode 700, mtime-cached). Your live `~/.zcode`, which the desktop app is using right now, is never written to. Your OAuth `credentials.json` is deliberately never copied. The scratch keeps exactly the `zai-api` provider rule with your key, your agents, and your skills.
+**Isolation.** This package's own state lives under `~/.zcode-cli` (never under `~/.zcode`, which belongs to the desktop app; if an older 0.3.x left files there, they are migrated out automatically on first run). The engine runs with `HOME` pointed at a scratch copy we own (`~/.zcode-cli/home`, mode 700, mtime-cached). Your live `~/.zcode`, which the desktop app is using right now, is never written to. Your OAuth `credentials.json` is deliberately never copied. The scratch keeps exactly the `zai-api` provider rule with your key, your agents, and your skills.
 
 **Yolo mode.** Sessions run with auto-approved tool side effects, matching the engine's own headless default; `--cwd` is the declared blast radius. A headless run that requests interactive user input fails fast with exit 5 rather than hanging.
 

@@ -1,6 +1,6 @@
 {
   "name": "@0xgeorgemathew/zcode",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Headless GLM-5.3 / GLM-5.3-Flash coding CLI for agents: streaming thinking, subagents, MCP servers, skills, session continuity. Wraps the ZCode engine. Zero dependencies.",
   "license": "MIT",
   "private": false,
