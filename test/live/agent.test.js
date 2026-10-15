@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const { readFileSync, existsSync, mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
 const PROMPT =
   'Use the Agent tool to create the file hello.txt in the current directory containing exactly HELLO-SUBAGENT, then report the agent id.';

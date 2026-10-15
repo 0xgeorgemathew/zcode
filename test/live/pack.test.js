@@ -9,9 +9,10 @@ const { execFileSync } = require('node:child_process');
 const { mkdtempSync, rmSync, mkdirSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { loadEnvKey, repoRoot } = require('./helpers/env.js');
+const { loadEnvKey, repoRoot } = require('../helpers/env.js');
 
 const ALLOWED_ROOTS = new Set([
+  'skills',
   'bin',
   'lib',
   'README.md',

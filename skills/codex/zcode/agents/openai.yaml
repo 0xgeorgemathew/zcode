@@ -1,0 +1,4 @@
+interface:
+  display_name: "zcode executor"
+  short_description: "Delegate scoped, verified work to zcode"
+  default_prompt: "Use $zcode to implement this scoped change in a verified zcode session and report its handback."

@@ -1,53 +1,242 @@
 #!/usr/bin/env node
 'use strict';
-// zcode — CLI entry: argv parsing + command dispatch (DESIGN §10).
+// zcode — CLI entry: argv parsing + command dispatch. Parsing rejects bad
+// input (exit 2) before any engine spawn or session record exists.
 const { normalizeModel, unknownModelMessage, normalizeEffort, EFFORT_LEVELS, DEFAULT_MODEL } = require('../lib/models.js');
 
-const EXIT = {
-  OK: 0,
-  INTERNAL: 1,
-  USAGE: 2,
-  NO_KEY: 3,
-  NO_ENGINE: 4,
-  TURN_FAILED: 5,
-  NO_SUBAGENT: 6,
-  TIMEOUT: 124,
-};
+const USAGE = `usage:
+  zcode task [options] <objective…>    execute a task contract, verify it, hand back
+  zcode [run] [options] <prompt…>      one-shot turn (prompt via stdin when piped)
+  zcode agent [options] <instructions…> turn that MUST dispatch a subagent
+  zcode resume <id> [message…]         continue a session (answer, follow-up, retry)
+  zcode status [<id>] [--json]         one session in detail, or all sessions
+  zcode wait <id…> [--json]            block until sessions finish; print handbacks
+  zcode cancel <id> [--json]           stop a running session
+  zcode login                          read API key from stdin → credentials
+  zcode doctor [--json]                engine + isolation + key report
 
-const USAGE = `usage: zcode [options] [prompt…]        one-shot turn (prompt via stdin when piped)
-       zcode agent [--profile <name>] <instructions…>
-                                            turn that MUST dispatch a subagent
-       zcode login                       read API key from stdin → credentials
-       zcode doctor [--json] [--fresh]   engine + isolation + key report
+session:
+  --id <id>             name the session (letters, digits, . _ -); default zc-<random>.
+                        An existing id is never re-run: use resume.
+  --label <text>        free-form label shown in status
+  --detach              start in the background, print the id, exit 0
+  --cwd <dir>           workspace (default: current dir)
+  --owns <path|glob>    repeatable: paths this session may change (relative to
+                        --cwd). Default: the whole workspace. Overlapping
+                        ownership with a running session is refused (exit 7)
+  --allow-overlap       start despite overlapping ownership
 
-options:
-  --model <id>      glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
-  --effort <level>  low | medium | high | xhigh | max. default: max
-  --cwd <dir>       workspace for the session (default: process.cwd())
-  --profile <name>  subagent profile (agent command; default: general-purpose)
-  --session <id>    continue a previous session (sessionId from a prior result)
-  --mcp <json|@f>   add MCP servers (repeatable). JSON maps names to defs:
-                    {"name":{"type":"stdio","command","args","env"}} or
-                    {"name":{"type":"http","url","headers"}}; @file reads a file.
-                    Hermetic default: only these run (deterministic, fast)
-  --mcp-inherit     also inherit the desktop's enabled MCP servers
-  --mcp-list        print the effective MCP server set as JSON and exit
-  --skills <dir>    add skills (repeatable): one skill dir (has SKILL.md) or a
-                    root of <name>/SKILL.md dirs. project <cwd>/.zcode/skills
-                    is picked up by the engine without any flag
-  --no-skills       run with an empty skill set (nothing inherited, nothing injected)
-  --include-reasoning  put the full reasoning text in the final JSON result
-  --quiet           do not mirror reasoning to stderr while running
-  --json            NDJSON events on stdout; final line {"type":"result",…}
-                    (stream events include reasoning_delta = thinking)
-  --timeout-ms <n>  default 600000
-  --fresh           rebuild the scratch HOME first
-  -p, --prompt <t>  prompt text (alias for positional prompt)
-  --version, --help`;
+task contract (task only):
+  --task <file|->       JSON contract or markdown brief (- = stdin)
+  --accept <text>       repeatable acceptance criterion
+  --check <command>     repeatable shell check zcode runs after the work
+  --file <path>         repeatable relevant file to read first
+  --context <text|@f>   repeatable extra context (design decisions, references)
+  --max-repairs <n>     repair turns after failing checks (default 2)
+  --check-timeout-ms <n> per-check timeout (default 300000)
+
+execution:
+  --model <id>          glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
+  --effort <level>      low | medium | high | xhigh | max. default: max
+  --timeout-ms <n>      whole invocation incl. checks/repairs (default 600000;
+                        task default 1800000)
+  --profile <name>      subagent profile (agent command; default general-purpose)
+  --mcp <json|@f>       add MCP servers (repeatable); hermetic by default
+  --mcp-inherit         also inherit the desktop's enabled MCP servers
+  --mcp-list            print the effective MCP server set as JSON and exit
+  --skills <dir>        add skills (repeatable): one skill dir or a root of them
+  --no-skills           empty skill set
+
+output:
+  --json                NDJSON events on stdout; final line {"type":"result",…}
+  --quiet               no progress: no stderr feed; with --json only the result line
+  --thinking / --no-thinking   mirror reasoning to stderr (run: on, task: off)
+  --stream              task --json: include text/reasoning deltas in the events
+  --include-reasoning   full reasoning text in the result
+  -p, --prompt <t>      prompt text (alias for positional prompt)
+  --session <id>        run: continue a session (zcode id or engine sess_ id)
+  --version, --help
+
+exit codes: 0 completed · 2 usage · 3 no key · 4 no engine · 5 failed ·
+  6 agent: no subagent · 7 workspace conflict / session busy · 8 partial or
+  checks failing · 9 unverified · 10 blocked · 124 timeout · 130 cancelled`;
 
 function fail(code, message) {
   process.stderr.write(`zcode: ${message}\n`);
   process.exit(code);
+}
+
+function readFileOrFail(file, flag) {
+  try {
+    return require('node:fs').readFileSync(file, 'utf8');
+  } catch {
+    return fail(2, `${flag} file "${file}" could not be read.`);
+  }
+}
+
+// --mcp accepts inline JSON or @file mapping server names to definitions.
+function parseMcpSpec(value) {
+  const text = value.startsWith('@') ? readFileOrFail(value.slice(1), '--mcp') : value;
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    fail(2, `--mcp spec must be valid JSON mapping server names to definitions: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    fail(2, `--mcp spec must be valid JSON mapping server names to definitions, got ${Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`}.`);
+  }
+  for (const [name, def] of Object.entries(parsed)) {
+    if (!def || typeof def !== 'object' || Array.isArray(def)) {
+      fail(2, `--mcp server "${name}" must be an object (e.g. {"type":"stdio","command":...,"args":[...]}).`);
+    }
+  }
+  return parsed;
+}
+
+const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', '__exec']);
+const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'maxRepairs', 'checkTimeoutMs']);
+const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
+
+function parseArgv(argv) {
+  const out = {
+    command: 'run',
+    prompts: [],
+    given: new Set(),
+    flags: {
+      model: DEFAULT_MODEL,
+      effort: 'max',
+      cwd: process.cwd(),
+      json: false,
+      fresh: false,
+      timeoutMs: undefined,
+      profile: 'general-purpose',
+      prompt: undefined,
+      session: undefined,
+      id: undefined,
+      label: undefined,
+      detach: false,
+      task: undefined,
+      accept: [],
+      check: [],
+      file: [],
+      context: [],
+      owns: [],
+      allowOverlap: false,
+      maxRepairs: undefined,
+      checkTimeoutMs: undefined,
+      mcpSpecs: [],
+      mcpInherit: false,
+      mcpList: false,
+      skillsDirs: [],
+      noSkills: false,
+      includeReasoning: false,
+      quiet: false,
+      thinking: undefined,
+      stream: false,
+    },
+  };
+  const valueFlags = new Map([
+    ['--model', 'model'], ['--effort', 'effort'], ['--cwd', 'cwd'], ['--profile', 'profile'],
+    ['--timeout-ms', 'timeoutMs'], ['-p', 'prompt'], ['--prompt', 'prompt'], ['--session', 'session'],
+    ['--id', 'id'], ['--label', 'label'], ['--task', 'task'], ['--max-repairs', 'maxRepairs'],
+    ['--check-timeout-ms', 'checkTimeoutMs'],
+  ]);
+  const listFlags = new Map([
+    ['--mcp', 'mcpSpecs'], ['--skills', 'skillsDirs'], ['--accept', 'accept'], ['--check', 'check'],
+    ['--file', 'file'], ['--context', 'context'], ['--owns', 'owns'],
+  ]);
+  const boolFlags = new Map([
+    ['--json', ['json', true]], ['--fresh', ['fresh', true]], ['--mcp-inherit', ['mcpInherit', true]],
+    ['--mcp-list', ['mcpList', true]], ['--no-skills', ['noSkills', true]],
+    ['--include-reasoning', ['includeReasoning', true]], ['--quiet', ['quiet', true]],
+    ['--detach', ['detach', true]], ['--allow-overlap', ['allowOverlap', true]],
+    ['--thinking', ['thinking', true]], ['--no-thinking', ['thinking', false]], ['--stream', ['stream', true]],
+  ]);
+  const numeric = (flag, value, { min = 1 } = {}) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < min) fail(2, `${flag} must be a number >= ${min}, got "${value}".`);
+    return n;
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (valueFlags.has(arg) || listFlags.has(arg)) {
+      const key = valueFlags.get(arg) || listFlags.get(arg);
+      const value = argv[++i];
+      if (value === undefined) fail(2, `option ${arg} requires a value.\n${USAGE}`);
+      out.given.add(key);
+      if (key === 'timeoutMs' || key === 'checkTimeoutMs') out.flags[key] = numeric(arg, value);
+      else if (key === 'maxRepairs') out.flags[key] = numeric(arg, value, { min: 0 });
+      else if (key === 'mcpSpecs') out.flags.mcpSpecs.push(parseMcpSpec(value));
+      else if (key === 'skillsDirs') {
+        if (!isDirectory(value)) fail(2, `--skills requires an existing directory, got "${value}".`);
+        out.flags.skillsDirs.push(value);
+      } else if (key === 'context') {
+        out.flags.context.push(value.startsWith('@') ? readFileOrFail(value.slice(1), '--context') : value);
+      } else if (listFlags.has(arg)) out.flags[key].push(value);
+      else if (!value.trim()) fail(2, `${arg} requires a non-empty value.`);
+      else out.flags[key] = value.trim();
+      continue;
+    }
+    if (boolFlags.has(arg)) {
+      const [key, v] = boolFlags.get(arg);
+      out.given.add(key);
+      out.flags[key] = v;
+      continue;
+    }
+    if (arg === '--help' || arg === '-h') {
+      process.stdout.write(USAGE + '\n');
+      process.exit(0);
+    }
+    if (arg === '--version') {
+      process.stdout.write(require('../package.json').version + '\n');
+      process.exit(0);
+    }
+    if (arg === '--') {
+      out.prompts.push(...argv.slice(i + 1));
+      break;
+    }
+    if (arg.startsWith('--') && arg.length > 2) fail(2, `unknown option "${arg}".\n${USAGE}`);
+    if (out.prompts.length === 0 && out.command === 'run' && !out.commandSet && COMMANDS.has(arg)) {
+      out.command = arg === 'list' ? 'status' : arg;
+      out.commandSet = true;
+      continue;
+    }
+    out.prompts.push(arg);
+  }
+
+  const cmd = out.command;
+  if (out.flags.prompt !== undefined) out.prompts.unshift(out.flags.prompt);
+  if (cmd !== 'task') {
+    for (const key of TASK_ONLY) {
+      if (out.given.has(key) && !(cmd === 'resume' && (key === 'maxRepairs' || key === 'checkTimeoutMs'))) {
+        fail(2, `--${flagName(key)} is only valid with "zcode task".`);
+      }
+    }
+  }
+  if (cmd === 'resume' || cmd === '__exec') {
+    for (const key of START_ONLY) {
+      if (out.given.has(key)) fail(2, `--${flagName(key)} cannot change on resume; it is fixed when the session starts.`);
+    }
+  }
+  if (out.given.has('session') && cmd !== 'run') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');
+  if (out.given.has('id') && !require('../lib/store.js').validId(out.flags.id)) {
+    fail(2, `--id "${out.flags.id}" must be 1-64 chars of letters, digits, ".", "_" or "-", starting with a letter or digit.`);
+  }
+  if (!isDirectory(out.flags.cwd)) fail(2, `--cwd must be an existing directory, got "${out.flags.cwd}".`);
+
+  const model = normalizeModel(out.flags.model);
+  if (!model) fail(2, unknownModelMessage(out.flags.model));
+  out.flags.model = model;
+  const effort = normalizeEffort(out.flags.effort);
+  if (!effort) fail(2, `unknown effort "${out.flags.effort}". --effort accepts ${EFFORT_LEVELS.join(' | ')}.`);
+  out.flags.effort = effort;
+  return out;
+}
+
+function flagName(key) {
+  return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`).replace(/^mcp-specs$/, 'mcp').replace(/^skills-dirs$/, 'skills');
 }
 
 function isDirectory(p) {
@@ -58,182 +247,34 @@ function isDirectory(p) {
   }
 }
 
-// --mcp accepts inline JSON or @file; the JSON must map server names to
-// definition objects ({type:"stdio"|"http"|"sse", ...} per the engine's
-// config schema). Fails (exit 2) before any engine spawn.
-function parseMcpSpec(value) {
-  let text = value;
-  if (value.startsWith('@')) {
-    try {
-      text = require('node:fs').readFileSync(value.slice(1), 'utf8');
-    } catch {
-      fail(EXIT.USAGE, `--mcp file "${value.slice(1)}" could not be read.`);
-    }
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    fail(EXIT.USAGE, `--mcp spec must be valid JSON mapping server names to definitions: ${err.message}`);
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    fail(EXIT.USAGE, `--mcp spec must be valid JSON mapping server names to definitions, got ${Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`}.`);
-  }
-  for (const [name, def] of Object.entries(parsed)) {
-    if (!def || typeof def !== 'object' || Array.isArray(def)) {
-      fail(EXIT.USAGE, `--mcp server "${name}" must be an object (e.g. {"type":"stdio","command":...,"args":[...]}).`);
-    }
-  }
-  return parsed;
-}
-
-// Parses argv (without node/script) into {command, prompts, flags}.
-// Exits 2 on usage errors. Rejection happens here, before any engine spawn.
-function parseArgv(argv) {
-  const out = {
-    command: 'run',
-    prompts: [],
-    flags: {
-      model: DEFAULT_MODEL,
-      effort: 'max',
-      cwd: process.cwd(),
-      json: false,
-      fresh: false,
-      timeoutMs: 600000,
-      profile: 'general-purpose',
-      prompt: undefined,
-      session: undefined,
-      mcpSpecs: [],
-      mcpInherit: false,
-      mcpList: false,
-      skillsDirs: [],
-      noSkills: false,
-      includeReasoning: false,
-      quiet: false,
-    },
-  };
-  const valueFlags = new Map([
-    ['--model', 'model'],
-    ['--effort', 'effort'],
-    ['--cwd', 'cwd'],
-    ['--profile', 'profile'],
-    ['--timeout-ms', 'timeoutMs'],
-    ['-p', 'prompt'],
-    ['--prompt', 'prompt'],
-    ['--session', 'session'],
-  ]);
-  const listFlags = new Map([
-    ['--mcp', 'mcpSpecs'],
-    ['--skills', 'skillsDirs'],
-  ]);
-  const boolFlags = new Map([
-    ['--json', 'json'],
-    ['--fresh', 'fresh'],
-    ['--mcp-inherit', 'mcpInherit'],
-    ['--mcp-list', 'mcpList'],
-    ['--no-skills', 'noSkills'],
-    ['--include-reasoning', 'includeReasoning'],
-    ['--quiet', 'quiet'],
-  ]);
-  const commands = new Set(['run', 'agent', 'login', 'doctor']);
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (valueFlags.has(arg) || boolFlags.has(arg) || listFlags.has(arg)) {
-      let key;
-      if (valueFlags.has(arg)) {
-        key = valueFlags.get(arg);
-        const value = argv[++i];
-        if (value === undefined) fail(EXIT.USAGE, `option ${arg} requires a value.\n${USAGE}`);
-        if (key === 'timeoutMs') {
-          const n = Number(value);
-          if (!Number.isFinite(n) || n <= 0) fail(EXIT.USAGE, `--timeout-ms must be a positive number, got "${value}".`);
-          out.flags[key] = n;
-        } else if (key === 'session') {
-          if (!value.trim()) fail(EXIT.USAGE, '--session requires a session id.');
-          out.flags[key] = value.trim();
-        } else {
-          out.flags[key] = value;
-        }
-      } else if (listFlags.has(arg)) {
-        key = listFlags.get(arg);
-        const value = argv[++i];
-        if (value === undefined) fail(EXIT.USAGE, `option ${arg} requires a value.\n${USAGE}`);
-        if (key === 'mcpSpecs') {
-          out.flags.mcpSpecs.push(parseMcpSpec(value, arg));
-        } else {
-          if (!isDirectory(value)) fail(EXIT.USAGE, `--skills requires an existing directory, got "${value}".`);
-          out.flags.skillsDirs.push(value);
-        }
-      } else {
-        key = boolFlags.get(arg);
-        out.flags[key] = true;
-      }
-      continue;
-    }
-    if (arg === '--help' || arg === '-h') {
-      process.stdout.write(USAGE + '\n');
-      process.exit(EXIT.OK);
-    }
-    if (arg === '--version') {
-      process.stdout.write(require('../package.json').version + '\n');
-      process.exit(EXIT.OK);
-    }
-    if (arg === '--') {
-      out.prompts.push(...argv.slice(i + 1));
-      break;
-    }
-    if (arg.startsWith('--') && arg.length > 2) {
-      fail(EXIT.USAGE, `unknown option "${arg}".\n${USAGE}`);
-    }
-    if (out.prompts.length === 0 && commands.has(arg)) {
-      out.command = arg;
-      continue;
-    }
-    out.prompts.push(arg);
-  }
-
-  if (out.command === 'run' && out.flags.prompt !== undefined) {
-    out.prompts.unshift(out.flags.prompt);
-  }
-
-  const model = normalizeModel(out.flags.model);
-  if (!model) fail(EXIT.USAGE, unknownModelMessage(out.flags.model));
-  out.flags.model = model;
-
-  const effort = normalizeEffort(out.flags.effort);
-  if (!effort) {
-    fail(
-      EXIT.USAGE,
-      `unknown effort "${out.flags.effort}". --effort accepts ${EFFORT_LEVELS.join(' | ')}.`
-    );
-  }
-  out.flags.effort = effort;
-  return out;
-}
-
 async function main() {
   const parsed = parseArgv(process.argv.slice(2));
-  const { command, flags } = parsed;
-  if (flags.mcpList) {
-    return require('../lib/commands/mcp-list.js')(parsed);
-  }
-  const run = require('../lib/commands/run.js');
-  switch (command) {
+  if (parsed.flags.mcpList) return require('../lib/commands/mcp-list.js')(parsed);
+  switch (parsed.command) {
     case 'run':
-      return run(parsed);
+    case 'task':
     case 'agent':
-      return require('../lib/commands/agent.js')(parsed);
+    case 'resume':
+    case '__exec':
+      return require('../lib/commands/exec.js')(parsed);
+    case 'status':
+    case 'wait':
+    case 'cancel':
+      return require('../lib/commands/sessions.js')(parsed);
     case 'login':
       return require('../lib/commands/login.js')(parsed);
     case 'doctor':
       return require('../lib/commands/doctor.js')(parsed);
     default:
-      fail(EXIT.USAGE, `unknown command "${command}".\n${USAGE}`);
+      return fail(2, `unknown command "${parsed.command}".\n${USAGE}`);
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`zcode: internal error: ${err && err.stack ? err.stack : err}\n`);
-  process.exit(EXIT.INTERNAL);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`zcode: internal error: ${err && err.stack ? err.stack : err}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = { parseArgv, USAGE };

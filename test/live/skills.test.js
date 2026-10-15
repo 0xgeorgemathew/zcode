@@ -11,9 +11,9 @@ const { mkdtempSync, rmSync, readdirSync, existsSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const os = require('node:os');
-const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
-const FIXTURE_SKILLS = path.join(__dirname, 'fixtures', 'skills');
+const FIXTURE_SKILLS = path.join(__dirname, '..', 'fixtures', 'skills');
 
 test('doctor reports skills inherited from the live ~/.zcode/skills', async () => {
   const liveSkills = path.join(os.homedir(), '.zcode', 'skills');

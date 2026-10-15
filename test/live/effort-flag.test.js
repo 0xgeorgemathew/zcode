@@ -16,20 +16,26 @@ const {
 } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
-const SCRATCH_ROLLOUT = path.join(
-  process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zcode-cli'),
-  'home',
-  '.zcode',
-  'cli',
-  'rollout'
-);
+// 0.4: each zcode session has its own engine HOME under
+// <root>/sessions/<id>/home; the rollout capture lives there.
+function rolloutDir(id) {
+  return path.join(
+    process.env.ZAI_CODE_HOME || path.join(require('node:os').homedir(), '.zcode-cli'),
+    'sessions',
+    id,
+    'home',
+    '.zcode',
+    'cli',
+    'rollout'
+  );
+}
 
 const PROMPT = 'Reply with exactly the word OK and nothing else.';
 
-function rolloutRecords(sessionId) {
-  const file = path.join(SCRATCH_ROLLOUT, `model-io-${sessionId}.jsonl`);
+function rolloutRecords(id, sessionId) {
+  const file = path.join(rolloutDir(id), `model-io-${sessionId}.jsonl`);
   const text = readFileSync(file, 'utf8');
   return text
     .split('\n')
@@ -38,12 +44,12 @@ function rolloutRecords(sessionId) {
 }
 
 // The engine flushes the rollout capture around turn completion; poll briefly.
-function rolloutFor(sessionId, { timeoutMs = 10000 } = {}) {
+function rolloutFor(id, sessionId, { timeoutMs = 10000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let lastErr = null;
   while (Date.now() < deadline) {
     try {
-      const records = rolloutRecords(sessionId);
+      const records = rolloutRecords(id, sessionId);
       if (records.length > 0) return records;
     } catch (err) {
       lastErr = err;
@@ -99,7 +105,7 @@ test('--effort high lands on the wire (rollout output_config.effort)', async () 
     assert.equal(outcome.effort, 'high');
 
     // Wire-level assertion from the engine's own request capture.
-    const records = rolloutFor(outcome.sessionId);
+    const records = rolloutFor(outcome.id, outcome.sessionId);
     assert.ok(records.length >= 1, 'rollout capture has >=1 model_io record');
     for (const rec of records) {
       const body = rec.request && rec.request.body;

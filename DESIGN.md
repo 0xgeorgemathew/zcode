@@ -793,3 +793,55 @@ item below was observed on the wire during this build:
   `node --test --test-concurrency=1 "test/**/*.test.js"` (concurrency 1
   because `doctor --fresh` rebuilds the shared scratch HOME and must not
   race a live engine child, and because the live tests share one API key).
+
+---
+
+## 17. 0.4 — executor redesign (orchestrator-facing)
+
+Goal: zcode as a lean execution engine an orchestrator (Opus, Sonnet, GPT, …)
+invokes at any task size, with independent sessions, zcode-run
+verification and a structured handback, entirely through the CLI.
+
+**Defects fixed (found by inspection, 0.3.2):**
+
+- *Shared scratch HOME destroyed sessions.* `ensureIsolation` stamped the
+  mtimes of every live v2 file, including ones the desktop app rewrites
+  constantly (`agents-state.json`, `bot-config.v3.json`, …). Any change
+  triggered `rm -rf <root>/home`, which deleted the engine's session DB
+  (`cli/db/db.sqlite`) under every other invocation, broke `--session`
+  resume, and could pull the HOME out from under a running engine.
+- *Per-run overlays raced.* `--mcp` rewrote the shared `cli/config.json`
+  and `--skills` / `--no-skills` rewrote the shared skills dir while other
+  runs' engines were reading them.
+- *Engine death mid-turn waited for the full timeout.* `onExit` was never
+  wired into the turn.
+- *Cancellation was a bare SIGKILL.* The engine was never told to stop.
+- *The plain feed wrote reasoning one character per `write()`.*
+
+**Architecture (smallest change that supports the executor workflow):**
+
+| module | responsibility |
+|---|---|
+| `lib/isolation.js` | one engine HOME per session (`<root>/sessions/<id>/home`); config rewritten in place on every invocation; engine state never deleted; plugin/runtime caches shared via symlink |
+| `lib/store.js` | session record (atomic writes), bounded events log, `result.json`; `interrupted` = active state with dead pid |
+| `lib/workspace.js` | ownership patterns, overlap check, leases (write-then-read with deterministic back-off), git/fs change snapshots |
+| `lib/contract.js` | task contract normalization, executor protocol prompt, handback parsing, the single `deriveStatus` |
+| `lib/checks.js` | zcode-run acceptance checks: process group, timeout, abort, bounded tail, `CI=1` |
+| `lib/appserver.js` | `openSession` (side-effect free, retryable) + `runTurn` (one prompt; `session/stop` on timeout/cancel/user-input) |
+| `lib/executor.js` | the one lifecycle every turn command uses |
+| `lib/commands/exec.js`, `sessions.js` | CLI surfaces: run/task/agent/resume/detach; status/wait/cancel |
+
+`session/stop {sessionId}` was confirmed by static inspection of the 0.16.x
+bundle (`wci` handler aborts `activeAbortController`). It has not been
+exercised live by this build.
+
+**Invariants added:** a prompt that reached the engine is never re-sent
+automatically, and only `openSession` is retried; an existing session id
+is never re-run; status is derived from zcode's own evidence (checks, diff,
+scope), never from the model's claim alone; leases refuse overlapping
+ownership unless `--allow-overlap` is passed.
+
+**Test split:** `npm test` is now the in-process unit suite (a scripted fake
+engine in `test/fixtures/fake-engine.js`; no CLI spawn, no API).
+`npm run test:live` is the previous functional suite, adapted to the
+per-session layout.

@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { mkdtempSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli } = require('./helpers/env.js');
+const { cli } = require('../helpers/env.js');
 
 test('with no key anywhere, a run exits 3 mentioning login and ZAI_API_KEY', async () => {
   const home = mkdtempSync(path.join(tmpdir(), 'zcode-nokey-'));

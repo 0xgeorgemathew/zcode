@@ -1,225 +1,273 @@
-# zcode
+<div align="center">
 
-Headless GLM-5.3 / GLM-5.3-Flash turns for agents, with the full agentic runtime underneath: subagents that do real work, MCP servers, skills, session memory. Zero dependencies. One binary, NDJSON out.
+# ⚡ zcode
 
-Built for agent callers, not humans: stable machine contract on stdout, everything a watcher needs on stderr, explicit exit codes, no surprises.
+**The execution engine for orchestrator agents.**
 
-```text
-$ zcode "What is 17*23? Reason carefully, then reply with only the number."
-│ The user wants 17 * 23. Simple math. 17*23 = 17*20 + 17*3 = 340 + 51 = 391. Reply with only the number.
-391
-  GLM-5.3-Flash  ·  effort max  ·  0 tool calls  ·  9.1s  ·  sess_03bf3114-44
-```
+Hand it a scoped task. It implements, verifies with *your* checks, and hands back proof.
 
-That is a real transcript. Thinking streams as a dimmed quote block on stderr, the answer lands alone on stdout, and a status line closes the turn. What you pipe is exactly what the model answered.
-
-[![npm](https://img.shields.io/npm/v/@0xgeorgemathew/zcode.svg)](https://www.npmjs.com/package/@0xgeorgemathew/zcode)
+[![npm](https://img.shields.io/npm/v/@0xgeorgemathew/zcode.svg?color=cb3837&logo=npm)](https://www.npmjs.com/package/@0xgeorgemathew/zcode)
+[![node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)](package.json)
+[![deps](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+`GLM-5.3-Flash` · effort `max` by default · `GLM-5.3` on demand
+
+</div>
 
 &nbsp;
 
-## Install
+Opus, Sonnet, GPT, or any agent with a shell delegates implementation to zcode. The orchestrator keeps product decisions, design direction, and coordination. zcode owns execution inside the scope it is given, and reports back what changed, what was checked, what failed, and what is still unverified.
+
+|  |  |
+|---|---|
+| 🧾 **Contracts, not prompts** | objective, scope, constraints, binding design decisions, acceptance criteria, checks |
+| ✅ **Evidence over claims** | zcode runs your checks itself and repairs failures in bounded turns; the model's report is only a claim |
+| 🧵 **Real sessions** | stable ids, detach, `status`, `wait`, `resume`, `cancel`; interrupted sessions are resumable |
+| 🧱 **Safe parallelism** | `--owns` leases per workspace; overlapping scopes are refused, out-of-scope edits are flagged |
+| 🤖 **Machine-first output** | one stable `zcode.result/1` JSON line; clean, colour-free text when not on a TTY |
+
+&nbsp;
+
+## Quick start
 
 ```sh
 npm install -g @0xgeorgemathew/zcode
-```
-
-Needs node 20 or newer for the CLI, 26 recommended for the engine child, plus the ZCode engine on the machine (today: the copy bundled with the ZCode desktop app, resolved automatically).
-
-&nbsp;
-
-## Start in three commands
-
-```sh
 echo "$ZAI_API_KEY" | zcode login    # store your Z.AI key (mode 600, never printed)
 zcode doctor                         # check engine, isolation, key
-zcode "Explain this repo in two sentences"
+
+zcode task --check "npm test" "Fix the off-by-one in src/paginate.ts"
 ```
+
+Needs node 20+ for the CLI (26 recommended for the engine child) and the ZCode engine on the machine. Today that is the copy bundled with the ZCode desktop app, which is resolved automatically.
+
+Orchestrator skills for Claude Code and Codex ship in [`skills/`](skills/README.md).
 
 &nbsp;
 
-## Ask
+## Models and effort
+
+Every command runs on **GLM-5.3-Flash at effort `max`** unless you say otherwise.
+
+| | flag | values | default |
+|---|---|---|---|
+| 🧠 model | `--model` | `glm-5.3-flash` (aliases `flash`, `5.3-flash`, `53f`) · `glm-5.3` (aliases `5.3`, `53`) | `glm-5.3-flash` |
+| 🎚️ effort | `--effort` | `low` · `medium` · `high` · `xhigh` · `max` | `max` |
 
 ```sh
-zcode "Reply with exactly: OK"                          # GLM-5.3-Flash, effort max
-zcode --model glm-5.3 "Reply with exactly: OK"          # GLM-5.3
-zcode --effort high "Draft a commit message"            # low | medium | high | xhigh | max
-echo "$PROMPT" | zcode                                  # prompt via stdin
+zcode task "…"                                   # GLM-5.3-Flash, effort max
+zcode task --effort high "…"                     # Flash, lighter reasoning
+zcode task --model glm-5.3 "…"                   # full GLM-5.3, effort max
+zcode task --model glm-5.3 --effort medium "…"   # full GLM-5.3, medium effort
 ```
 
-Only `glm-5.3` and `glm-5.3-flash` (plus short aliases) are accepted. Anything else exits 2 before any engine spawn or API call. Default effort is max.
+A task contract can also set `"model"` and `"effort"`; flags win over the contract. A resumed session keeps the model and effort it started with unless you pass the flags again.
 
 &nbsp;
 
-## Watch it work
+## Hand off a task
 
-Plain mode keeps two streams apart on purpose:
+```sh
+zcode task --cwd ./site --id page-1 \
+  --owns src/pages/pricing/ \
+  --check "npm run build" --check "npm test -- pricing" \
+  --accept "Three plan cards, the middle one highlighted" \
+  --context @design/pricing.md \
+  "Implement the pricing page from the supplied design notes"
+```
 
-- **stdout** carries the answer, nothing else. Pipe it, capture it, trust it.
-- **stderr** is the live feed, all dimmed so it visually recedes: thinking as `│ ` quote lines, tool calls as `→ started` / `✓ ok` / `✗ error`, then one status line with model, effort, tool count, duration, and the session id.
+zcode turns this into an execution contract and runs a fresh engine session in yolo mode, with `--cwd` as the blast radius. The model may split the work across subagents. When it finishes, **zcode runs the checks itself**. If a check fails, zcode feeds the failure output back for a bounded number of repair turns (`--max-repairs`, default 2), then reports:
 
 ```text
-$ zcode "Create a file named note.txt containing exactly the word ready, then reply with just: DONE"
-│ This is a trivial task: create note.txt containing exactly the word "ready", then reply with just "DONE".
-│ …
-→ Write started
-DONE
-  GLM-5.3-Flash  ·  effort max  ·  1 tool call  ·  11.1s  ·  sess_e9fc3633-3b
+✓ completed  page-1  142.3s
+  Pricing page with three plan cards; middle card highlighted per design notes.
+changed  3 files
+  A src/pages/pricing/index.tsx
+  A src/pages/pricing/PlanCard.tsx
+  M src/pages/pricing/styles.css
+checks   2/2 passed  ·  1 repair turn
+  ✓ npm run build
+  ✓ npm test -- pricing
+not verified
+  - prose acceptance criteria are confirmed only by the executor's own report
 ```
 
-`--quiet` silences the stderr feed. `--include-reasoning` puts the full thinking text into the JSON result line.
+That block is the format of the summary printed to stdout. The live feed (session header, phases, tools, subagents, check results) goes to stderr. With `--json` you get the same data as one machine-readable result line.
 
-&nbsp;
+For small work, the objective alone is enough: `zcode task "Fix the typo in the README heading"`.
 
-## Continue a conversation
+### The contract
 
-Every result carries a `sessionId`. Sessions persist on disk, so a later invocation, in a new process, picks up the same thread:
-
-```sh
-SID=$(zcode --json "Remember the secret word BANANA. Reply with exactly: OK" | tail -1 | jq -r .sessionId)
-
-zcode --session "$SID" "Reply with only the secret word I told you."    # -> BANANA
-```
-
-The continued result line reports `"resumed": true` with the same `sessionId`. The status footer shows the short id so plain-mode callers can continue without a JSON round-trip.
-
-&nbsp;
-
-## Dispatch a subagent
-
-`zcode agent` forces a dispatch through the Agent tool and verifies the outcome programmatically. It never trusts the model's prose: exit 0 only if the parent turn succeeded and at least one subagent ended with status `success`.
-
-```sh
-WORK=$(mktemp -d)
-zcode agent --cwd "$WORK" \
-  "Use the Agent tool to create hello.txt containing exactly HELLO-SUBAGENT, then report the agent id."
-cat "$WORK/hello.txt"        # HELLO-SUBAGENT
-```
-
-Use `--cwd` to declare where the subagent may work. `--profile` picks the subagent profile (default `general-purpose`; your own `~/.zcode/agents/*.md` profiles resolve too). With `--json`, the final line carries the engine-reported evidence:
+Flags cover the common fields. For richer handoffs, pass `--task contract.json`, `--task brief.md`, or `--task -` to read stdin. Only `objective` is required; unknown keys are rejected so a typo never silently drops a requirement.
 
 ```json
-"subagents": [{
-  "agentId": "agent_8f5144b0-…",
-  "childSessionId": "sess_subagent_agent_8f5144b0-…",
-  "profileId": "general-purpose",
-  "status": "success",
-  "summary": "…the subagent's own report…",
-  "durationMs": 59765
-}]
+{
+  "objective": "Implement page 2 (Team) per the design spec",
+  "scope": ["Team page route and its components"],
+  "constraints": ["No new dependencies", "Keep existing routing untouched"],
+  "design": ["Grid of 3 columns ≥1024px, 1 column below", "Use tokens from src/theme.ts only"],
+  "acceptance": ["Every member card shows name, role, avatar"],
+  "checks": ["npm run build", "npm test -- team"],
+  "files": ["src/theme.ts", "src/pages/home/index.tsx"],
+  "references": ["design/team.png described in design/team.md"],
+  "context": ["Copy lives in content/team.json"],
+  "owns": ["src/pages/team/**", "content/team.json"],
+  "limits": { "timeoutMs": 1800000, "maxRepairs": 2, "checkTimeoutMs": 300000 },
+  "model": "glm-5.3",
+  "effort": "high"
+}
 ```
+
+`design` entries are presented to the model as binding decisions it must implement, not revisit. If the model hits a consequential product or design question the contract does not answer, it reports `blocked` with its questions instead of guessing.
+
+### Status: what a result means
+
+| status | meaning | exit |
+|---|---|---|
+| `completed` | zcode's own checks ran and passed, the executor reports done, no unmet criteria, nothing changed outside `--owns` | 0 |
+| `unverified` | executor reports done, but no checks were declared (or no usable handback), so completion is self-reported | 9 |
+| `partial` | work remains: executor says partial, a criterion is unmet, or files changed outside the owned scope | 8 |
+| `blocked` | needs the orchestrator: `questions` lists what is missing | 10 |
+| `failed` | checks still failing after the repair budget (`error.kind: checks_failed`, exit 8), engine/turn error (5), or timeout (124) | 5 / 8 / 124 |
+| `cancelled` | stopped by `zcode cancel`, Ctrl-C, or SIGTERM | 130 |
+
+A model claiming success is never enough on its own. A subagent ending `success` only means it returned. The handback block the model writes is reported as `handback` (a claim), and the status is derived from what zcode observed. `notVerified` lists anything zcode could not check itself.
 
 &nbsp;
 
-## MCP servers
+## Sessions
 
-Hermetic by default: a run registers only the servers you pass. `--mcp` takes inline JSON or `@file`, repeatable; stdio, http, and sse are supported.
+Every invocation gets a session: `--id page-1`, or a generated `zc-xxxxxxxx`. Each session has its own engine HOME (`~/.zcode-cli/sessions/<id>/home`), so conversation state, engine database, MCP servers, and skills never leak between sessions. An existing id is never re-run, so retrying a start you lost track of fails fast instead of doing the work twice. Use `status` to check on it, or `resume` to continue it.
 
 ```sh
-zcode --mcp '{"word-server":{"type":"stdio","command":"node","args":["srv.js"],"enabled":true}}' \
-      "Call get_magic_word and reply with exactly what it returns"
-
-zcode --mcp '{"docs":{"type":"http","url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer …"}}}' \
-      "Look up the MCP spec section on tools"
-
-zcode --mcp @servers.json --mcp-list      # print the effective set as JSON
-zcode --mcp-inherit …                     # also load the desktop's enabled servers
+zcode task --detach --id page-1 --owns src/pages/home/ --check "npm run build" "Build page 1"
+zcode task --detach --id page-2 --owns src/pages/team/ --check "npm run build" "Build page 2"
+zcode status                 # all sessions: id, state/status, kind, updated, label
+zcode status page-1 --json   # one session: state, phase, activity, recent events, result
+zcode wait page-1 page-2     # block until both finish; print each handback
+zcode resume page-2 "Use the 2-column variant below 1024px."   # answer / follow up / retry
+zcode cancel page-1          # stop the turn and any running check; recorded as cancelled
 ```
 
-The CLI forces the connection and waits until your servers have settled before sending the prompt, so the first turn never misses a slow stdio spawn. Connection state streams to stderr (`◇ mcp word-server connected`) and into the JSON events. Inheritance is opt-in because desktop sets often include browser-OAuth servers that can never finish headless, and they stall the engine's connect pool.
+- **Lifecycle.** A session is `queued`, then `running`, then `finished` with a status. If the process that owned a running session dies, the session shows as `interrupted`, which can be resumed.
+- **Resume** sends your message into the same engine conversation. For task sessions, the model is told that earlier work is already applied to the workspace, and zcode re-runs the checks and repairs and produces a fresh handback. A resume with no message (task sessions) means "continue from where you stopped".
+- **Never automatically re-sent.** zcode retries only engine start-up, which happens before anything reaches the model. A prompt that was delivered is never re-sent automatically. Continuing is always an explicit `resume`.
+- **Detached sessions** write their NDJSON to `~/.zcode-cli/sessions/<id>/stdout.ndjson` and diagnostics to `stderr.log`. The handback lands in `result.json`. You never need to read these files: `status` and `wait` print everything.
+
+### Concurrency and ownership
+
+`--owns` declares what a session may change: a path owns its subtree, and globs are supported. Patterns are relative to `--cwd`. A session without `--owns` owns the whole workspace, which is right for a one-off task in its own checkout.
+
+- Starting a session whose ownership **overlaps a running session in the same workspace** is refused with exit 7, unless `--allow-overlap` is passed. The workspace is the git toplevel, so sibling directories of one repo count as one workspace. Disjoint owners (`src/pages/home/` vs `src/pages/team/`) run side by side.
+- After the work, zcode diffs the workspace and reports each changed file. Changes outside the session's ownership are listed in `scopeViolations`, and for task sessions they make the result `partial`. Files that fall in a concurrent session's ownership are attributed to that session, not counted against this one.
+- For overlapping or risky parallel work, give each session its own git worktree via `--cwd`.
+- `ZAI_CODE_MAX_ACTIVE` (default 8) is a soft machine-wide cap. Sessions beyond it wait in `queued`.
 
 &nbsp;
 
-## Skills
+## One-shot turns and subagent dispatch
 
-Two ways, both real: the model loads skills through its Skill tool.
-
-- **Project skills, zero flags.** Put `<name>/SKILL.md` under `<workspace>/.zcode/skills/`. The engine walks your workspace; no copy, no flag.
-
-- **Injected per run.** `--skills <dir>` where dir is one skill (has `SKILL.md`) or a root of `<name>/SKILL.md` dirs. Copied into the isolated scratch for this run, removed after.
+`zcode` with a prompt (or `zcode run`) is a plain turn. The answer streams to stdout, and thinking is mirrored to stderr as `│ ` lines.
 
 ```sh
-zcode --skills ./my-skills "Load the word-vault skill, then reply with the magic word it defines."
+zcode "What is 17*23? Reply with only the number."
+zcode --model glm-5.3 --effort high "Draft a commit message for the staged diff"
+echo "$PROMPT" | zcode
 ```
 
-`--no-skills` runs with an empty skill set. Your desktop user skills (`~/.zcode/skills`) are inherited into the isolation automatically.
+`zcode agent "<instructions>"` forces a dispatch through the engine's Agent tool. It is verified from `session/subagents`: exit 6 if no subagent ran or any ended in a status other than `success`. `--profile` picks the subagent profile (default `general-purpose`).
+
+Inside `zcode task`, subagents are optional. The executor decides when to use them, gives each a bounded scope and file ownership, and must verify the integrated result.
 
 &nbsp;
 
 ## Machine interface
 
-`--json` emits NDJSON events on stdout with a stable final line:
+`--json`: stdout carries NDJSON events, then exactly one final `{"type":"result",…}` line. With `--quiet`, the result line is the only output. For task sessions, text/reasoning deltas are left out of the events unless you pass `--stream`, so an orchestrator reading the output pays only for lifecycle events.
 
 ```json
-{"type":"result","ok":true,"response":"…","model":"GLM-5.3-Flash","mode":"yolo",
- "effort":"max","sessionId":"sess_…","resumed":false,
- "usage":{"inputTokens":19608,"outputTokens":3},
- "reasoningChars":2531,"toolCalls":2,"toolEvents":9,
- "mcpServers":["word-server"],"skillsInjected":["word-vault"],
- "durationMs":21972}
+{"type":"result","schema":"zcode.result/1","ok":true,"status":"completed","id":"page-1","kind":"task",
+ "summary":"…","response":"…executor report…","issues":[],"questions":[],"unresolved":[],"notVerified":[],
+ "changes":{"tracking":"git","files":[{"path":"src/pages/home/index.tsx","change":"added","owned":true}]},
+ "scopeViolations":[],"checks":[{"command":"npm run build","ok":true,"exitCode":0,"timedOut":false,"durationMs":8123,"output":"…tail…"}],
+ "checksPassed":true,"repairs":0,"handback":{"status":"done","summary":"…","changes":[],"checks":[],"criteria":[],"unresolved":[],"questions":[],"notes":""},
+ "subagents":[{"agentId":"agent_…","profileId":"general-purpose","status":"success","summary":"…","durationMs":59765}],
+ "error":null,"cwd":"/abs/site","workspaceRoot":"/abs/site","owns":["src/pages/home/"],"sessionId":"sess_…","resumed":false,"turns":1,
+ "model":"GLM-5.3-Flash","effort":"max","mode":"yolo","usage":{"inputTokens":19608,"outputTokens":3120},
+ "toolCalls":14,"durationMs":142301,"files":{"session":"…/sessions/page-1","result":"…/result.json","events":"…/events.ndjson"}}
 ```
 
-`model` and `effort` are engine-reported values cross-checked from the engine's own `model_request_started` event, not the wrapper's echo. A failed run still prints a final line with `"ok":false` plus the error kind, so a caller always gets one parseable frame.
-
-Event types on the way in:
+`model` and `effort` are engine-reported (from the engine's `model_request_started` event), not echoes. `sessionId` is the engine's session id; `id` is the zcode session id you pass to `status`, `wait`, `resume`, and `cancel`. A run that fails still ends with a parseable result line.
 
 | event | meaning |
 |---|---|
-| `{"type":"stream","kind":"text_delta","delta":"…"}` | answer text, live |
-| `{"type":"stream","kind":"reasoning_delta","delta":"…"}` | thinking, live |
-| `{"type":"tool","name":"Bash","phase":"started"}` | tool lifecycle: scheduled, started, result, error |
-| `{"type":"mcp","name":"word-server","status":"connected","toolCount":1}` | your MCP servers settling |
-| `{"type":"model_request_started",…}` | engine-reported model and reasoning level |
-| `{"type":"state","mode":"yolo"}` | session mode |
+| `{"type":"session","id","kind","cwd","owns","checks","model","effort","resumed"}` | which session is active, and its scope |
+| `{"type":"phase","phase":"starting\|executing\|reporting\|checking\|repairing\|queued"}` | what is running |
+| `{"type":"tool","name":"Edit","phase":"started"}` | tool lifecycle (`scheduled`, `started`, `result`, `error`) |
+| `{"type":"subagent","phase":"started\|returned\|error"}` | subagent activity |
+| `{"type":"check","phase":"finished","command","ok","exitCode","durationMs"}` | zcode-run verification |
+| `{"type":"mcp","name","status"}` · `{"type":"retry",…}` · `{"type":"model_request_started",…}` | MCP settling, start-up retry, engine model evidence |
+| `{"type":"stream","kind":"text_delta\|reasoning_delta","delta"}` | live text (run/agent; task with `--stream`) |
+
+`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one result line per session as each finishes.
 
 &nbsp;
 
 ## Options
 
-| option | takes | default | notes |
+| option | applies to | default | notes |
 |---|---|---|---|
-| `--model` | id | `glm-5.3-flash` | `glm-5.3` plus aliases: `5.3`, `53`, `flash`, `5.3-flash`, `53f` |
-| `--effort` | level | `max` | `low`, `medium`, `high`, `xhigh`, `max` |
-| `--cwd` | dir | current dir | the session workspace, and the blast radius |
-| `--session` | id | new session | continue a previous conversation |
-| `--mcp` | JSON or `@file` | none | repeatable; stdio, http, sse |
-| `--mcp-inherit` | flag | off | also load desktop-enabled MCP servers |
-| `--mcp-list` | flag | | print effective servers as JSON, exit |
-| `--skills` | dir | none | repeatable; one skill or a root of skills |
-| `--no-skills` | flag | off | empty skill set for this run |
-| `--profile` | name | `general-purpose` | subagent profile for `agent` |
-| `--include-reasoning` | flag | off | full thinking text in the result line |
-| `--quiet` | flag | off | silence the stderr live feed |
-| `--json` | flag | off | NDJSON events plus result line on stdout |
-| `--timeout-ms` | number | `600000` | |
-| `--fresh` | flag | off | rebuild the isolated scratch HOME first |
-| `-p`, `--prompt` | text | | alias for the positional prompt |
+| `--id`, `--label` | run, task, agent | `zc-<random>` | session identity |
+| `--detach` | run, task, agent, resume | off | background worker; prints the id |
+| `--cwd` | run, task, agent | current dir | the workspace and blast radius |
+| `--owns` | run, task, agent | whole workspace | repeatable path or glob |
+| `--allow-overlap` | run, task, agent | off | start despite overlapping ownership |
+| `--task` | task | | JSON contract, markdown brief, or `-` |
+| `--accept`, `--check`, `--file`, `--context` | task | | repeatable; `--context @file` reads a file |
+| `--max-repairs` | task, resume | `2` | repair turns after failing checks |
+| `--check-timeout-ms` | task, resume | `300000` | per check; checks get `CI=1` when unset |
+| `--model` | all turns | `glm-5.3-flash` | `glm-5.3` plus aliases `5.3`, `53`, `flash`, `5.3-flash`, `53f` |
+| `--effort` | all turns | `max` | `low`, `medium`, `high`, `xhigh`, `max` |
+| `--timeout-ms` | all turns; wait | run 600000, task 1800000 | the whole invocation incl. checks and repairs |
+| `--session` | run | | 0.3 compat: continue by zcode id or engine `sess_` id |
+| `--profile` | agent | `general-purpose` | subagent profile |
+| `--mcp` / `--mcp-inherit` / `--mcp-list` | run, task, agent | hermetic | MCP servers (inline JSON or `@file`) |
+| `--skills` / `--no-skills` | run, task, agent | desktop skills | add skills; or run with none |
+| `--json`, `--quiet` | all | | see Machine interface |
+| `--thinking` / `--no-thinking` | turns | run on, task off | mirror reasoning to stderr |
+| `--stream`, `--include-reasoning` | turns | off | deltas in task events; full reasoning in the result |
+
+Only `glm-5.3` and `glm-5.3-flash` are accepted; anything else exits 2 before any spawn. Effort levels `low`, `high`, and `max` have been observed live on Flash. `medium` and `xhigh` may be rejected server-side.
 
 ## Exit codes
 
 | code | meaning |
 |---|---|
-| 0 | success |
+| 0 | completed |
 | 1 | unexpected internal error |
-| 2 | usage error, unknown model, unknown effort, bad `--mcp` JSON |
+| 2 | usage error (bad flag, model, effort, contract, unknown or duplicate session id) |
 | 3 | no API key (`zcode login` or `ZAI_API_KEY`) |
 | 4 | engine or builtin provider config not found |
-| 5 | turn failed (engine error, failed terminal, user-input request) |
+| 5 | failed: engine or turn error |
 | 6 | `agent`: no subagent dispatched or none ended `success` |
+| 7 | workspace conflict, or the session is already running |
+| 8 | partial, or checks still failing after repairs |
+| 9 | unverified |
+| 10 | blocked |
 | 124 | `--timeout-ms` exceeded |
-| 130 | interrupted (SIGINT) |
+| 130 | cancelled |
 
 &nbsp;
 
 ## Under the hood
 
-**Key handling.** `ZAI_API_KEY` env var, or `zcode login` which stores it at `~/.zcode-cli/credentials.json` (mode 600). The key is never printed or logged. The only file it ever lands in is the scratch provider config, which the engine requires to register the provider.
+**Key handling.** The key comes from the `ZAI_API_KEY` env var, or from `zcode login`, which stores it at `~/.zcode-cli/credentials.json` (mode 600). It is never printed or logged. Engine messages and check output are scrubbed before they are stored or shown. The only files the key ever lands in are each session's scratch provider config, which the engine requires to register the provider.
 
-**Isolation.** This package's own state lives under `~/.zcode-cli` (never under `~/.zcode`, which belongs to the desktop app; if an older 0.3.x left files there, they are migrated out automatically on first run). The engine runs with `HOME` pointed at a scratch copy we own (`~/.zcode-cli/home`, mode 700, mtime-cached). Your live `~/.zcode`, which the desktop app is using right now, is never written to. Your OAuth `credentials.json` is deliberately never copied. The scratch keeps exactly the `zai-api` provider rule with your key, your agents, and your skills.
+**Isolation.** This package's state lives under `~/.zcode-cli`, never under `~/.zcode`, which belongs to the desktop app. Each session's engine runs with `HOME` pointed at its own scratch directory. On every invocation zcode rewrites the scratch config from your live desktop config: provider rule with your key, agent profiles, skills, MCP servers. It never touches the engine's database there, so sessions stay resumable. The desktop's OAuth `credentials.json` is never copied, and the live `~/.zcode` is never written. The engine's ~30 MB plugin cache is shared between sessions through a symlink.
 
-**Yolo mode.** Sessions run with auto-approved tool side effects, matching the engine's own headless default; `--cwd` is the declared blast radius. A headless run that requests interactive user input fails fast with exit 5 rather than hanging.
+**Yolo mode.** Tool side effects are auto-approved, matching the engine's own headless default; `--cwd` is the blast radius. If a headless turn requests interactive input, the result is reported as `blocked` instead of hanging. The executor contract forbids commits, pushes, deploys, and other external side effects unless the task explicitly asks for them.
 
-**Engine.** Resolved from the ZCode desktop app bundle (`zcode doctor` prints path, version, sha256). `ZAI_CODE_ENGINE` points elsewhere if you need to pin one. macOS today; nothing else in the wrapper is macOS-specific.
+**Environment.** `ZAI_CODE_HOME` (state root), `ZAI_CODE_ENGINE` (engine bundle), `ZAI_CODE_NODE` (engine interpreter), `ZAI_CODE_BUILTIN_PROVIDER_CONFIG`, `ZAI_CODE_LIVE_DIR` (desktop config dir, default `~/.zcode`), `ZAI_CODE_MAX_ACTIVE`, `NO_COLOR`.
 
 &nbsp;
 
@@ -228,12 +276,13 @@ Event types on the way in:
 Zero dependencies, plain CommonJS, no build step.
 
 ```sh
-npm test              # functional only, no mocks; live tests hit the real GLM API
-npm run accept:flash  # one-shot through GLM-5.3-Flash
+npm test              # unit suite: in-process, scripted fake engine, no CLI spawn, no API calls
+npm run test:live     # functional suite: spawns the CLI against the real engine and GLM API
+npm run accept:flash  # black-box acceptance runs (real API)
 npm run accept:subagent
 npm run accept:53
 ```
 
-Tests load the key from the repo `.env` (never committed, never shipped). The design record and pinned wire facts live in `DESIGN.md` and `docs/BUILD-REPORT.md`.
+Live tests load the key from the repo `.env`, which is never committed or shipped. The design record and the wire-protocol facts pinned live are in `DESIGN.md` (§17 covers the 0.4 executor redesign) and `docs/BUILD-REPORT.md`.
 
 MIT license.

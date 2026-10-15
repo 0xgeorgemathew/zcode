@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
 function preconditions() {
   const { engineOk } = checkEngine();

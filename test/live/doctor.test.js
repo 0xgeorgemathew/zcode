@@ -13,14 +13,11 @@ const {
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { cli, loadEnvKey } = require('./helpers/env.js');
+const { cli, loadEnvKey } = require('../helpers/env.js');
 
 const LIVE_V2 = path.join(os.homedir(), '.zcode', 'v2');
 const LIVE_V2_PROVIDER_CONFIG = path.join(LIVE_V2, 'provider_config.json');
 const LIVE_CLI_CONFIG = path.join(os.homedir(), '.zcode', 'cli', 'config.json');
-const SCRATCH_HOME = path.join(os.homedir(), '.zcode-cli', 'home');
-const SCRATCH_V2 = path.join(SCRATCH_HOME, '.zcode', 'v2');
-const SCRATCH_PROVIDER_CONFIG = path.join(SCRATCH_V2, 'provider_config.json');
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -63,6 +60,10 @@ test('doctor --json --fresh builds isolation without touching live config', asyn
     existsSync(report.engine.builtinProviderConfig),
     'doctor-reported builtin provider config exists'
   );
+
+  // 0.4: doctor builds its probe engine HOME exactly like a session's.
+  const SCRATCH_HOME = report.isolation.home;
+  const SCRATCH_PROVIDER_CONFIG = path.join(SCRATCH_HOME, '.zcode', 'v2', 'provider_config.json');
 
   // Scratch provider_config.json: exists, mode <= 600, exactly the zai-api
   // rule, key == loaded key != live key (sha256 comparisons only).

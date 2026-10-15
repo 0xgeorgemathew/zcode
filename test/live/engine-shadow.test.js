@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, rmSync, symlinkSync, realpathSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli, checkEngine, binPath, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, binPath, loadEnvKey } = require('../helpers/env.js');
 
 test('a zcode wrapper on PATH must not be taken for the engine (0.3.0 regression)', async () => {
   const { engineOk } = checkEngine();

@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { cli, checkEngine, loadEnvKey } = require('./helpers/env.js');
+const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
 test('CLI root is never the live ~/.zcode and never inside it', () => {
   const { rootDir, LIVE_ZCODE } = require('../lib/isolation.js');
@@ -62,9 +62,8 @@ test('migration vacates our artifacts from the live dir and touches nothing else
       '{"apiKey":"stored-by-login"}\n',
       'migrated key content intact'
     );
-    // The home dir moves; its contents are then rebuilt fresh because the
-    // migrated stamp never matches this machine's sources (expected).
-    assert.ok(existsSync(path.join(newRoot, 'home')), 'scratch home migrated (rebuilt fresh)');
+    // The legacy shared home moves too (0.4 only mines it for shared caches).
+    assert.ok(existsSync(path.join(newRoot, 'home')), 'legacy scratch home migrated');
     assert.ok(existsSync(path.join(newRoot, 'build-stamp.json')), 'stamp migrated');
     // And gone from the live dir.
     for (const name of ['credentials.json', 'build-stamp.json', 'injected-skills.json', 'home']) {
