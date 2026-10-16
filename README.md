@@ -179,6 +179,32 @@ zcode cancel page-1          # stop the turn and any running check; recorded as 
 - **Session environment.** Every session's executor and every check run with `ZCODE_SESSION_ID`, `ZCODE_PORT` (a free TCP port from 41000-48999, reserved per session and unique among live sessions, also recorded in the session), `ZCODE_OUT` (`<cwd>/.zcode/out/<id>`, created) and `ZCODE_TMP` (a per-session scratch dir). The task prompt tells the executor to use them for dev and preview servers, build output dirs and test artifacts, so parallel sessions cannot collide on a port or a `dist/`. Files under `.zcode/` never count as changes or scope violations; add `.zcode/` to the `.gitignore` of repos you run zcode in.
 - **`--touch <path|glob>`** (repeatable; contract key `touch`) allows minimal edits outside `--owns` without declaring ownership. Touched files are listed in `touched` and are not scope violations, so one stray line in a shared stylesheet no longer blocks a session. Starting is refused with exit 7 if a running session owns a matching path; a touch reserves nothing, so it never blocks another session's `--owns`.
 
+### Plans: several sessions with dependencies
+
+`zcode plan` runs a set of task sessions as one unit, in dependency order, and returns a single summary.
+
+```json
+{ "decisions": ["@decisions.md"], "context": ["@brief.md"], "effort": "high",
+  "sessions": [
+    { "id": "tokens", "objective": "Design tokens", "owns": ["src/tokens/**"], "checks": ["npm run lint"] },
+    { "id": "home",   "objective": "Home page", "after": ["tokens"], "owns": ["src/home/**"] },
+    { "id": "team",   "objective": "Team page", "after": ["tokens"], "owns": ["src/team/**"] }
+  ] }
+```
+
+Optional top-level keys: `cwd` (relative to the plan file), `decisions`, `context`, `files` (prepended to every session; `@file` entries are read relative to the plan file), `model`, `effort`. Each session has an `id` (its zcode session id), optional `after` (ids) and any task contract keys.
+
+```sh
+zcode plan check plan.json              # validate: exit 2, one line per problem
+zcode plan run plan.json --preflight    # read-only questions per session (<id>.pre); exit 10 if any
+zcode plan run plan.json --detach       # supervise in the background
+zcode plan wait plan   --json --timeout-ms 600000   # one line; exit 124 on timeout
+zcode plan status plan                  # one line per session
+zcode plan resume plan "answers…"       # resume failed/partial/blocked sessions, relaunch skipped ones
+```
+
+A session starts once everything it is `after` has completed; sessions that can run together must own disjoint paths (`plan check` enforces it). A session that ends without completing marks its downstream `skipped` while the others continue. The summary is `{"type":"plan","name","status","sessions":[{"id","status"}],"briefs":[…]}` with a brief for each finished session that did not complete. Exit codes: 0 completed, 10 blocked, 8 partial or failed, 124 timeout. Plan status is derived from the sessions, so it stays accurate even if the supervisor process dies; `plan resume` restarts it. The plan name is the file's basename (`--id` overrides); ids that already exist as sessions are refused, so re-run through `plan resume`.
+
 &nbsp;
 
 ## One-shot turns and subagent dispatch

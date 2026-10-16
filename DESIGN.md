@@ -962,3 +962,76 @@ budget and one combined repair prompt (`buildRepairPrompt(..., {visual})`).
 After the budget `deriveStatus` returns `partial` with `visual criteria
 unmet: ...` (failing checks still win with `failed`). The results are noted
 in `notVerified` as executor judgement; zcode does no pixel check.
+
+### 18.7 Plans (phase 7)
+
+`zcode plan` (`lib/plan.js` logic, `lib/commands/plan.js` CLI) runs a DAG of
+task sessions from one file.
+
+```
+plan.json = { "cwd"?, "decisions"?, "context"?, "files"?, "model"?, "effort"?,
+              "sessions": [ { "id", "after"?: [ids], ...task contract keys } ] }
+```
+
+`cwd` is relative to the plan file (an explicit `--cwd` wins); `decisions` and
+`context` entries starting with `@` are files relative to the plan file. Per
+session the contract is `{top-level decisions/context/files first, then the
+session's own}`, the plan's `model`/`effort` as defaults, assembled by
+`taskspec.buildContract` (`sessionBase`). Session ids are zcode session ids
+verbatim. The plan name is `--id` or the file's basename.
+
+- **check** (`checkPlan`, also run by `run`): one line per problem, exit 2.
+  Unknown plan keys, empty or malformed `sessions`, invalid/duplicate ids (and
+  `<id>.pre` must fit 64 chars), `after` refs that do not exist or point at
+  the session itself, dependency cycles, contract errors (units, `@file`,
+  unknown keys), model/effort via `models.effortProblem`, and ownership: two
+  sessions that can run at the same time (neither transitively `after` the
+  other) must own disjoint paths (`ownsOverlap`; no owns = whole workspace).
+  An id that already exists as a session is refused unless the stored plan
+  state of that name lists it, so a plan is continued with `plan resume`.
+- **State.** `<root>/plans/<name>.json` (`schema: zcode.plan-state/1`):
+  `{name, file, cwd, sessions, supervisor: {pid}|null, launchErrors}`,
+  created exclusively (a second `plan run` of a name exits 7). Progress is
+  never stored: a session's status is its record's (`queued`, `running`,
+  `interrupted`, or the finished status). A session with no record is
+  `pending`, or `skipped` when anything it is transitively `after` ended
+  without `completed`; a launch that failed before a record existed reads
+  `failed` (`launchErrors`). The plan status is derived: `running` (live
+  session, or pending with a live supervisor), `completed`, `blocked`
+  (any blocked), `failed` (failed/cancelled/interrupted), `partial`
+  (otherwise), `interrupted` (pending work but the supervisor is dead).
+  Exit codes: 0 completed, 10 blocked, 8 any other non-running, 124 timeout.
+  So `status`/`wait` stay accurate when the supervisor dies.
+- **Supervisor** (`supervise`): holds a pid lock (`plans/<name>.lock`), polls
+  the sessions every 500 ms, launches each pending session whose `after` all
+  `completed` through `exec.startDetached` (the extracted core of `--detach`;
+  `buildInvocation(parsed, {base, dir})` takes the assembled contract in place
+  of `--task`), and stops when nothing is live or pending. Skipped sessions
+  need no marking (derived). `plan run` supervises in-process; with
+  `--detach` it spawns `zcode __plan <name>` and prints
+  `{"type":"plan","name","status":"running"}`. A `--timeout-ms` expiry hands
+  supervision to a detached supervisor, prints the pending summary, exit 124.
+- **wait/status**: exactly one JSON line
+  `{type:"plan",name,status,sessions:[{id,status}],briefs:[…]}`, `briefs` =
+  `zcode.brief/1` of every finished session that is not `completed`; on a
+  timeout the same line without `briefs`, `status:"running"`, exit 124.
+  Human output is one line per session (`id status - summary`, blocked
+  sessions list their questions). `status` exits 0; `wait` returns once the
+  status is not `running` (also `interrupted`).
+- **resume** (`plan resume <name> [message…] [--session id]`): resumes every
+  failed/partial/unverified/blocked/cancelled/interrupted session through
+  `buildResume` + `startDetached` (default message "Continue: fix the
+  remaining issues."; blocked sessions need a message, else exit 2), then
+  restarts supervision. Skipped sessions need no action: once their upstream
+  runs again they are pending and the supervisor launches them when it
+  completes.
+- **preflight** (`plan run --preflight`): every session as a read-only
+  preflight named `<id>.pre` (previous `.pre` sessions are deleted first;
+  `after` is ignored, preflight takes no lease so no ownership conflicts),
+  waiting for all (`--timeout-ms`, default 10 min), then one brief per session
+  with questions (exit 10; failed ones are printed too, exit 8), or, with
+  none, one line `{type:"preflight",name,status:"completed",sessions:N}`.
+  No plan state is created, so a later `plan run` is unaffected.
+
+`usage()` in exec.js now throws `UsageError` (turned into the one-line exit 2
+at the command entry) so the builders can run inside the supervisor.

@@ -19,7 +19,7 @@ const NOT_ZCODE_FLAGS = new Set(['--test-concurrency']); // npm/node flags quote
 
 test('docs only mention flags and commands the CLI accepts', () => {
   const known = new Set(USAGE.match(/--[a-z][a-z-]*/g));
-  const commands = new Set(['task', 'run', 'agent', 'resume', 'status', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', 'list']);
+  const commands = new Set(['task', 'run', 'agent', 'resume', 'status', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', 'list', 'plan']);
   for (const rel of DOCS) {
     const text = fs.readFileSync(path.join(root, rel), 'utf8');
     for (const flag of new Set(text.match(/(?<![\w-])--[a-z][a-z-]*/g) || [])) {

@@ -13,6 +13,13 @@ const USAGE = `usage:
   zcode wait <id…> [--any] [--json]    block until sessions finish; print handbacks
   zcode result <id> [--full] [--json]  print a finished session's handback (brief by default)
   zcode cancel <id> [--json]           stop a running session
+  zcode plan check <file>              validate a plan file (ids, after, cycles, owns, effort)
+  zcode plan run <file> [--preflight] [--detach] [--timeout-ms n] [--id name] [--json]
+                                       run a DAG of task sessions (see "plan" below)
+  zcode plan wait|status <name> [--timeout-ms n] [--json]
+                                       one summary line: {type:"plan",name,status,sessions,briefs}
+  zcode plan resume <name> [message…] [--session <id>]
+                                       resume failed/partial/blocked sessions, restart supervision
   zcode login                          read API key from stdin → credentials
   zcode doctor [--json]                engine + isolation + key report
   zcode skills [install|uninstall] [claude|codex]
@@ -54,6 +61,20 @@ task contract (task only):
   --serve <cmd>         command that serves the app for --visual (honours $ZCODE_PORT)
   --max-repairs <n>     repair turns after failing checks (default 2)
   --check-timeout-ms <n> per-check timeout (default 300000)
+
+plan (zcode plan run <plan.json>):
+  plan.json             {cwd?, decisions?, context?, files?, model?, effort?,
+                        sessions:[{id, after?:[ids], ...task contract keys}]}; the
+                        top-level decisions/context/files are prepended to every
+                        session. A session starts when everything it is "after" has
+                        completed; sessions that can run together must own disjoint
+                        paths. A session ending non-completed marks its downstream
+                        "skipped"; the others continue
+  --preflight           plan run: read-only preflight of every session ("<id>.pre"),
+                        prints the questions as one brief per session (exit 10 if any)
+  --detach              plan run/resume: supervise in a background process
+  --id <name>           plan name (default: the file's basename)
+  --session <id>        plan resume: only this session
 
 execution:
   --model <id>          glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
@@ -122,7 +143,7 @@ function parseMcpSpec(value) {
   return parsed;
 }
 
-const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', '__exec']);
+const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', 'plan', '__plan', '__exec']);
 const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'touch', 'maxRepairs', 'checkTimeoutMs', 'decisions', 'units', 'visual', 'viewports', 'serve', 'preflight']);
 const FULL_COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'wait', 'result', '__exec']);
 const START_ONLY = new Set(['id', 'label', 'owns', 'touch', 'preflight', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
@@ -253,9 +274,15 @@ function parseArgv(argv) {
   if (out.flags.prompt !== undefined) out.prompts.unshift(out.flags.prompt);
   if (cmd !== 'task') {
     for (const key of TASK_ONLY) {
+      if (cmd === 'plan' && key === 'preflight') continue;
       if (out.given.has(key) && !(cmd === 'resume' && (key === 'maxRepairs' || key === 'checkTimeoutMs'))) {
         fail(2, `--${flagName(key)} is only valid with "zcode task".`);
       }
+    }
+  }
+  if (cmd === 'plan' || cmd === '__plan') {
+    for (const key of ['label', 'owns', 'touch', 'allowOverlap', 'model', 'effort', 'profile']) {
+      if (out.given.has(key)) fail(2, `--${flagName(key)} is not valid with "zcode plan"; set it in the plan file.`);
     }
   }
   if (cmd === 'resume' || cmd === '__exec') {
@@ -265,7 +292,7 @@ function parseArgv(argv) {
   }
   if (out.given.has('any') && cmd !== 'wait') fail(2, '--any is only valid with "zcode wait".');
   if (out.given.has('full') && !FULL_COMMANDS.has(cmd)) fail(2, `--full is not valid with "zcode ${cmd}".`);
-  if (out.given.has('session') && cmd !== 'run') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');
+  if (out.given.has('session') && cmd !== 'run' && cmd !== 'plan') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');
   if (out.given.has('id') && !require('../lib/store.js').validId(out.flags.id)) {
     fail(2, `--id "${out.flags.id}" must be 1-64 chars of letters, digits, ".", "_" or "-", starting with a letter or digit.`);
   }
@@ -328,6 +355,9 @@ async function main() {
     case 'resume':
     case '__exec':
       return require('../lib/commands/exec.js')(parsed);
+    case 'plan':
+    case '__plan':
+      return require('../lib/commands/plan.js')(parsed);
     case 'status':
     case 'wait':
     case 'result':
@@ -344,6 +374,9 @@ async function main() {
   }
 }
 
+// Exported before main() runs: the plan supervisor reuses parseArgv.
+module.exports = { parseArgv, USAGE };
+
 if (require.main === module) {
   main().catch((err) => {
     process.stderr.write(`zcode: internal error: ${err && err.stack ? err.stack : err}\n`);
@@ -351,4 +384,3 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgv, USAGE };
