@@ -885,3 +885,26 @@ session's settings) before any session record or engine exists: exit 2,
 one line. `doctor --json` reports `models: {id: [levels]}`. `medium` and
 `xhigh` stay in the effort enum (so the message can say they are
 unsupported) but are refused for both models.
+
+### 18.3 Parallel-safe sessions (phase 3)
+
+- `lib/ports.js`: `reservePort` takes a pid lock file per port under
+  `<root>/ports/` (range 41000-48999, a resumed session prefers its previous
+  port) and verifies with a real bind probe, so the port is unique among
+  live sessions and also free of foreign listeners. Released with the
+  session.
+- Environment for executor and checks (`engineEnv(sessionEnv)`,
+  `runChecks({env})`): `ZCODE_SESSION_ID`, `ZCODE_PORT`, `ZCODE_OUT`
+  (`<cwd>/.zcode/out/<id>`), `ZCODE_TMP` (`<root>/sessions/<id>/tmp`);
+  recorded in the session record (`port`, `out`, `tmp`) and the full result
+  (`sessionEnv`). The prompt gets a "Session environment" section built by
+  `contract.sessionSection` (<= 400 bytes; it is the one always-on addition
+  budgeted in `scripts/measure.js`).
+- Any path with a `.zcode` segment is skipped by `snapshot` (git mode) and
+  filtered from the diff, including committed changes.
+- `--touch` / contract `touch`: stored as `inv.touch` (workspace-relative
+  patterns, like owns). Changed unowned files matching a touch pattern are
+  `touched` (result `touched`, `changes.files[].touched`), never scope
+  violations. `acquireLease({touch})` refuses (exit 7, message in the owns
+  style) when a live lease overlaps a touch pattern; leases record `touch`
+  but it is never compared against other sessions' ownership.

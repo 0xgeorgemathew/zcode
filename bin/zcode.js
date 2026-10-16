@@ -33,6 +33,9 @@ task contract (task only):
   --task <file|->       JSON contract or markdown brief (- = stdin)
   --accept <text>       repeatable acceptance criterion
   --check <command>     repeatable shell check zcode runs after the work
+  --touch <path|glob>   repeatable: minimal edits allowed outside --owns; reported
+                        as "touched", not a scope violation. Refused (exit 7) if a
+                        running session owns a matching path; reserves nothing
   --file <path>         repeatable relevant file to read first
   --context <text|@f>   repeatable extra context (design decisions, references)
   --max-repairs <n>     repair turns after failing checks (default 2)
@@ -106,9 +109,9 @@ function parseMcpSpec(value) {
 }
 
 const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', '__exec']);
-const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'maxRepairs', 'checkTimeoutMs']);
+const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'touch', 'maxRepairs', 'checkTimeoutMs']);
 const FULL_COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'wait', 'result', '__exec']);
-const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
+const START_ONLY = new Set(['id', 'label', 'owns', 'touch', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
 
 function parseArgv(argv) {
   const out = {
@@ -134,6 +137,7 @@ function parseArgv(argv) {
       file: [],
       context: [],
       owns: [],
+      touch: [],
       allowOverlap: false,
       maxRepairs: undefined,
       checkTimeoutMs: undefined,
@@ -159,7 +163,7 @@ function parseArgv(argv) {
   ]);
   const listFlags = new Map([
     ['--mcp', 'mcpSpecs'], ['--skills', 'skillsDirs'], ['--accept', 'accept'], ['--check', 'check'],
-    ['--file', 'file'], ['--context', 'context'], ['--owns', 'owns'],
+    ['--file', 'file'], ['--context', 'context'], ['--owns', 'owns'], ['--touch', 'touch'],
   ]);
   const boolFlags = new Map([
     ['--json', ['json', true]], ['--fresh', ['fresh', true]], ['--mcp-inherit', ['mcpInherit', true]],

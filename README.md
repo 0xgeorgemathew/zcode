@@ -18,7 +18,7 @@ The orchestrator keeps product decisions, design direction, and coordination. zc
 <tr><td><b>Checks run by zcode</b></td><td>zcode runs each <code>--check</code> after the work. A failing check sends its output back to the model for up to 2 repair turns.</td></tr>
 <tr><td><b>Status from evidence</b></td><td><code>completed</code> requires passing checks and no edits outside <code>--owns</code>. The model's own report is kept as a claim.</td></tr>
 <tr><td><b>Sessions</b></td><td>Stable ids, <code>--detach</code>, <code>status</code>, <code>wait</code>, <code>resume</code>, <code>cancel</code>. A session whose process died shows as interrupted and can be resumed.</td></tr>
-<tr><td><b>Parallel work</b></td><td>Two sessions with overlapping <code>--owns</code> in one repo are refused with exit 7.</td></tr>
+<tr><td><b>Parallel work</b></td><td>Two sessions with overlapping <code>--owns</code> in one repo are refused with exit 7. Every session gets its own port, output dir and tmp dir (<code>ZCODE_PORT</code>, <code>ZCODE_OUT</code>, <code>ZCODE_TMP</code>).</td></tr>
 <tr><td><b>Output</b></td><td>With <code>--json</code>, one compact <code>zcode.brief/1</code> result line (<code>--full</code> for the whole <code>zcode.result/1</code> record). Timeouts and usage errors are one line. No colour codes when stdout is not a terminal.</td></tr>
 </table>
 
@@ -168,6 +168,8 @@ zcode cancel page-1          # stop the turn and any running check; recorded as 
 - After the work, zcode diffs the workspace and reports each changed file. Changes outside the session's ownership are listed in `scopeViolations`, and for task sessions they make the result `partial`. Files that fall in a concurrent session's ownership are attributed to that session, not counted against this one.
 - For overlapping or risky parallel work, give each session its own git worktree via `--cwd`.
 - `ZAI_CODE_MAX_ACTIVE` (default 8) is a soft machine-wide cap. Sessions beyond it wait in `queued`.
+- **Session environment.** Every session's executor and every check run with `ZCODE_SESSION_ID`, `ZCODE_PORT` (a free TCP port from 41000-48999, reserved per session and unique among live sessions, also recorded in the session), `ZCODE_OUT` (`<cwd>/.zcode/out/<id>`, created) and `ZCODE_TMP` (a per-session scratch dir). The task prompt tells the executor to use them for dev and preview servers, build output dirs and test artifacts, so parallel sessions cannot collide on a port or a `dist/`. Files under `.zcode/` never count as changes or scope violations; add `.zcode/` to the `.gitignore` of repos you run zcode in.
+- **`--touch <path|glob>`** (repeatable; contract key `touch`) allows minimal edits outside `--owns` without declaring ownership. Touched files are listed in `touched` and are not scope violations, so one stray line in a shared stylesheet no longer blocks a session. Starting is refused with exit 7 if a running session owns a matching path; a touch reserves nothing, so it never blocks another session's `--owns`.
 
 &nbsp;
 
@@ -239,6 +241,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `--detach` | run, task, agent, resume | off | background worker; prints the id |
 | `--cwd` | run, task, agent | current dir | the workspace and blast radius |
 | `--owns` | run, task, agent | whole workspace | repeatable path or glob |
+| `--touch` | task | | repeatable; minimal edits outside `--owns`, reported as `touched` |
 | `--allow-overlap` | run, task, agent | off | start despite overlapping ownership |
 | `--task` | task | | JSON contract, markdown brief, or `-` |
 | `--accept`, `--check`, `--file`, `--context` | task | | repeatable; `--context @file` reads a file |

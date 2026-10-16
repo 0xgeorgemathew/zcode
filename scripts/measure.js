@@ -139,7 +139,8 @@ function measurePrompt() {
   const ownsDisplay = ['src/pricing/**'];
   const bare = buildTaskPrompt(contract, { ownsDisplay });
   const sample = {
-    id: 'zc-sample', port: 41234, out: '/work/.zcode/out/zc-sample', tmp: '/tmp/zcode-zc-sample',
+    id: 'zc-1a2b3c4d', port: 41234,
+    out: '/Users/dev/projects/site/.zcode/out/zc-1a2b3c4d', tmp: '/Users/dev/.zcode-cli/sessions/zc-1a2b3c4d/tmp',
   };
   let full = bare;
   try {

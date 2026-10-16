@@ -3,7 +3,7 @@
 // A scripted stand-in for `zcode.cjs app-server --stdio` (unit tests only;
 // no model, no network). Speaks the NDJSON frames lib/appserver.js expects
 // (DESIGN §9/§16). Behavior per session/send comes from the JSON file in
-// FAKE_ENGINE_SCRIPT: {turns:[{response, write:{path,content}, delayMs,
+// FAKE_ENGINE_SCRIPT: {turns:[{response, write:{path,content}, writes:[{path,content}], delayMs,
 // fail, hang, userInput, tool}], subagents:[…]}. The turn index persists in
 // FAKE_ENGINE_STATE so a resumed session (a new engine process) continues
 // the script. Every received method is appended to FAKE_ENGINE_LOG.
@@ -40,7 +40,17 @@ function runTurn(sessionId) {
   const spec = script.turns[Math.min(state.turn, script.turns.length - 1)] || { response: 'ok' };
   state.turn++;
   writeState(state);
-  log({ turnStarted: state.turn, cwd: process.cwd(), home: process.env.HOME });
+  log({
+    turnStarted: state.turn,
+    cwd: process.cwd(),
+    home: process.env.HOME,
+    zcode: {
+      id: process.env.ZCODE_SESSION_ID,
+      port: process.env.ZCODE_PORT,
+      out: process.env.ZCODE_OUT,
+      tmp: process.env.ZCODE_TMP,
+    },
+  });
   event(sessionId, 'turn.started', {}, { turnId: `t${state.turn}` });
   event(sessionId, 'session.updated', {
     type: 'model_request_started',
@@ -67,10 +77,10 @@ function runTurn(sessionId) {
       event(sessionId, 'tool.updated', { kind: 'started', toolName: spec.tool, toolCallId: 'tc1' });
       event(sessionId, 'tool.updated', { kind: 'result', toolName: spec.tool, toolCallId: 'tc1' });
     }
-    if (spec.write) {
-      const target = path.join(process.cwd(), spec.write.path);
+    for (const w of [spec.write, ...(spec.writes || [])].filter(Boolean)) {
+      const target = path.join(process.cwd(), w.path);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, spec.write.content);
+      fs.writeFileSync(target, w.content);
     }
     if (spec.fail) {
       send({ method: 'v4/telemetry/event', params: { kind: 'turn.terminal', status: 'failed', result: { error: spec.fail } } });
