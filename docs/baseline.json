@@ -1,0 +1,10 @@
+{
+  "schema": "zcode.measure/1",
+  "resultBytes": 2970,
+  "stdoutBytes": 3957,
+  "wallMs": 299,
+  "waitTimeoutBytes": 1518,
+  "waitSessions": 2,
+  "promptBytes": 5995,
+  "promptWithSessionBytes": 5995
+}
