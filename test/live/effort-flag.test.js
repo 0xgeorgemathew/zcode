@@ -76,7 +76,7 @@ test('--effort high lands on the wire (rollout output_config.effort)', async () 
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--effort', 'high', '--json', '--cwd', work, PROMPT],
+        ['--effort', 'high', '--json', '--full', '--cwd', work, PROMPT],
         { cwd: work, timeoutMs: 240000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {

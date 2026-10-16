@@ -33,7 +33,7 @@ const MODES = {
     prompt: ONE_SHOT_PROMPT,
     token: 'PINEAPPLE',
     expectedModel: 'GLM-5.3-Flash',
-    cliArgs: ['--json', '--effort', 'max', '--model', 'glm-5.3-flash'],
+    cliArgs: ['--json', '--full', '--effort', 'max', '--model', 'glm-5.3-flash'],
     timeoutMs: 300000,
   },
   glm53: {
@@ -41,7 +41,7 @@ const MODES = {
     prompt: ONE_SHOT_PROMPT,
     token: 'PINEAPPLE',
     expectedModel: 'GLM-5.3',
-    cliArgs: ['--json', '--effort', 'max', '--model', 'glm-5.3'],
+    cliArgs: ['--json', '--full', '--effort', 'max', '--model', 'glm-5.3'],
     timeoutMs: 300000,
   },
   subagent: {
@@ -50,7 +50,7 @@ const MODES = {
     token: 'AVOCADO',
     expectedModel: 'GLM-5.3-Flash',
     cliArgs: [
-      'agent', '--json', '--effort', 'max', '--profile', 'general-purpose',
+      'agent', '--json', '--full', '--effort', 'max', '--profile', 'general-purpose',
     ],
     timeoutMs: 480000,
   },

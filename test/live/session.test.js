@@ -23,7 +23,7 @@ test('LIVE --session: second process remembers the first turn', async () => {
     let sessionId = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--json', '--cwd', work, 'Remember the secret word BANANA. Reply with exactly: OK'],
+        ['--json', '--full', '--cwd', work, 'Remember the secret word BANANA. Reply with exactly: OK'],
         { cwd: work, timeoutMs: 240000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {
@@ -44,7 +44,7 @@ test('LIVE --session: second process remembers the first turn', async () => {
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
         [
-          '--json',
+          '--json', '--full',
           '--session',
           sessionId,
           '--cwd',

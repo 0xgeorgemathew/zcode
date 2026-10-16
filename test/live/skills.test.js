@@ -52,7 +52,7 @@ test('LIVE --skills: model loads the injected skill via the Skill tool', async (
     let last;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--json', '--skills', FIXTURE_SKILLS, '--cwd', work, prompt],
+        ['--json', '--full', '--skills', FIXTURE_SKILLS, '--cwd', work, prompt],
         { cwd: work, timeoutMs: 300000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {

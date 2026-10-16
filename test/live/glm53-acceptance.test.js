@@ -21,7 +21,7 @@ test('glm-5.3 one-shot acceptance: OK, model cross-checked on the wire', async (
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--model', 'glm-5.3', '--json', '--cwd', work, PROMPT],
+        ['--model', 'glm-5.3', '--json', '--full', '--cwd', work, PROMPT],
         { cwd: work, timeoutMs: 300000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {

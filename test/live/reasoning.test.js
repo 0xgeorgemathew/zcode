@@ -26,7 +26,7 @@ test('LIVE --json: reasoning_delta events stream and the result reports reasonin
     let last;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--json', '--include-reasoning', '--cwd', work, PROMPT],
+        ['--json', '--full', '--include-reasoning', '--cwd', work, PROMPT],
         { cwd: work, timeoutMs: 240000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {

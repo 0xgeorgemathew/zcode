@@ -845,3 +845,30 @@ ownership unless `--allow-overlap` is passed.
 engine in `test/fixtures/fake-engine.js`; no CLI spawn, no API).
 `npm run test:live` is the previous functional suite, adapted to the
 per-session layout.
+
+## 18. 0.5 — quiet orchestration
+
+Goal: an orchestrator spends tokens only on decisions; parallel sessions
+never collide. Measured by `scripts/measure.js` against `docs/baseline.json`
+(recorded on 0.4.4 before any 0.5 change): result line, `wait` timeout
+output, executor prompt, wall time. Gates: result <= 20% of baseline;
+wait timeout <= 120 B per pending session; prompt <= baseline plus the
+always-on new sections (<= 400 B); wall time <= baseline + 5% (+300 ms).
+
+### 18.1 Quiet output (phase 1)
+
+- `lib/brief.js` projects the full record (`zcode.result/1`, unchanged,
+  always what `result.json` holds) to the brief (`zcode.brief/1`): status,
+  ok, id, label, summary (<= 600), files (paths), checks (passing =
+  `{command, ok}`; failing adds exitCode/timedOut/tail <= 1500), questions,
+  issues, unresolved, scopeViolations, touched, decisions, visual, units,
+  error (`{kind, message <= 500}`; `checks_failed` is kind only, the
+  failing checks are listed), `result` path. Empty keys omitted. run/agent
+  add `response`. `--json` prints the brief; `--full` the full record.
+- `zcode result <id> [--json] [--full]`: handback of a finished session
+  (exit 7 while running).
+- `wait`: on timeout one line per pending session
+  (`{"type":"pending",id,state,phase,elapsedMs}` / `id state phase 12m`),
+  exit 124. `--any` returns the first finished session (its exit code).
+- Usage errors are one line with a did-you-mean for unknown flags; the help
+  text is only printed by `--help`.

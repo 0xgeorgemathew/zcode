@@ -70,7 +70,7 @@ test('LIVE --mcp: engine spawns the server and the model calls its tool', async 
     let last;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
-        ['--json', '--mcp', wordServerSpec(), '--cwd', work, prompt],
+        ['--json', '--full', '--mcp', wordServerSpec(), '--cwd', work, prompt],
         { cwd: work, timeoutMs: 420000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));
       if (code === 2 || code === 3 || code === 4) {

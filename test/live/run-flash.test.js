@@ -55,7 +55,7 @@ test('Flash one-shot: OK, model+effort on the wire, yolo mode, usage, streaming'
   let last;
   try {
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const { code, stdout, stderr } = await cli(['--json', '--cwd', work, PROMPT], {
+      const { code, stdout, stderr } = await cli(['--json', '--full', '--cwd', work, PROMPT], {
         cwd: work,
         timeoutMs: 240000,
       }).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));

@@ -10,7 +10,8 @@ const USAGE = `usage:
   zcode agent [options] <instructions…> turn that MUST dispatch a subagent
   zcode resume <id> [message…]         continue a session (answer, follow-up, retry)
   zcode status [<id>] [--json]         one session in detail, or all sessions
-  zcode wait <id…> [--json]            block until sessions finish; print handbacks
+  zcode wait <id…> [--any] [--json]    block until sessions finish; print handbacks
+  zcode result <id> [--full] [--json]  print a finished session's handback (brief by default)
   zcode cancel <id> [--json]           stop a running session
   zcode login                          read API key from stdin → credentials
   zcode doctor [--json]                engine + isolation + key report
@@ -51,8 +52,13 @@ execution:
   --no-skills           empty skill set
 
 output:
-  --json                NDJSON events on stdout; final line {"type":"result",…}
-  --quiet               no progress: no stderr feed; with --json only the result line
+  --json                NDJSON events on stdout; final line is the compact brief
+                        {"type":"result","schema":"zcode.brief/1",…}
+  --full                with --json (and result/wait): the full record instead
+                        (schema zcode.result/1; result.json on disk is always full)
+  --any                 wait: return as soon as the FIRST id finishes
+  --quiet               no progress: no stderr feed; with --json only the result line;
+                        usage errors are always a single line
   --thinking / --no-thinking   mirror reasoning to stderr (run: on, task: off)
   --stream              task --json: include text/reasoning deltas in the events
   --include-reasoning   full reasoning text in the result
@@ -97,8 +103,9 @@ function parseMcpSpec(value) {
   return parsed;
 }
 
-const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', '__exec']);
+const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', '__exec']);
 const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'maxRepairs', 'checkTimeoutMs']);
+const FULL_COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'wait', 'result', '__exec']);
 const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
 
 function parseArgv(argv) {
@@ -138,6 +145,8 @@ function parseArgv(argv) {
       quiet: false,
       thinking: undefined,
       stream: false,
+      full: false,
+      any: false,
     },
   };
   const valueFlags = new Map([
@@ -156,6 +165,7 @@ function parseArgv(argv) {
     ['--include-reasoning', ['includeReasoning', true]], ['--quiet', ['quiet', true]],
     ['--detach', ['detach', true]], ['--allow-overlap', ['allowOverlap', true]],
     ['--thinking', ['thinking', true]], ['--no-thinking', ['thinking', false]], ['--stream', ['stream', true]],
+    ['--full', ['full', true]], ['--any', ['any', true]],
   ]);
   const numeric = (flag, value, { min = 1 } = {}) => {
     const n = Number(value);
@@ -168,7 +178,7 @@ function parseArgv(argv) {
     if (valueFlags.has(arg) || listFlags.has(arg)) {
       const key = valueFlags.get(arg) || listFlags.get(arg);
       const value = argv[++i];
-      if (value === undefined) fail(2, `option ${arg} requires a value.\n${USAGE}`);
+      if (value === undefined) fail(2, `option ${arg} requires a value.`);
       out.given.add(key);
       if (key === 'timeoutMs' || key === 'checkTimeoutMs') out.flags[key] = numeric(arg, value);
       else if (key === 'maxRepairs') out.flags[key] = numeric(arg, value, { min: 0 });
@@ -201,7 +211,10 @@ function parseArgv(argv) {
       out.prompts.push(...argv.slice(i + 1));
       break;
     }
-    if (arg.startsWith('--') && arg.length > 2) fail(2, `unknown option "${arg}".\n${USAGE}`);
+    if (arg.startsWith('--') && arg.length > 2) {
+      const hint = suggestFlag(arg, [...valueFlags.keys(), ...listFlags.keys(), ...boolFlags.keys()]);
+      fail(2, `unknown flag ${arg} (${hint ? `did you mean ${hint}?` : 'see zcode --help'})`);
+    }
     if (out.prompts.length === 0 && out.command === 'run' && !out.commandSet && COMMANDS.has(arg)) {
       out.command = arg === 'list' ? 'status' : arg;
       out.commandSet = true;
@@ -224,6 +237,8 @@ function parseArgv(argv) {
       if (out.given.has(key)) fail(2, `--${flagName(key)} cannot change on resume; it is fixed when the session starts.`);
     }
   }
+  if (out.given.has('any') && cmd !== 'wait') fail(2, '--any is only valid with "zcode wait".');
+  if (out.given.has('full') && !FULL_COMMANDS.has(cmd)) fail(2, `--full is not valid with "zcode ${cmd}".`);
   if (out.given.has('session') && cmd !== 'run') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');
   if (out.given.has('id') && !require('../lib/store.js').validId(out.flags.id)) {
     fail(2, `--id "${out.flags.id}" must be 1-64 chars of letters, digits, ".", "_" or "-", starting with a letter or digit.`);
@@ -237,6 +252,31 @@ function parseArgv(argv) {
   if (!effort) fail(2, `unknown effort "${out.flags.effort}". --effort accepts ${EFFORT_LEVELS.join(' | ')}.`);
   out.flags.effort = effort;
   return out;
+}
+
+// Closest known flag by edit distance (<= 2), or null.
+function suggestFlag(arg, known) {
+  const dist = (a, b) => {
+    const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      let prev = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const tmp = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = tmp;
+      }
+    }
+    return row[b.length];
+  };
+  let best = null;
+  let bestD = Infinity;
+  for (const k of known) {
+    if (!k.startsWith('--')) continue;
+    const d = dist(arg, k);
+    if (d < bestD) { best = k; bestD = d; }
+  }
+  return best && bestD <= 2 ? best : null;
 }
 
 function flagName(key) {
@@ -263,6 +303,7 @@ async function main() {
       return require('../lib/commands/exec.js')(parsed);
     case 'status':
     case 'wait':
+    case 'result':
     case 'cancel':
       return require('../lib/commands/sessions.js')(parsed);
     case 'login':
@@ -272,7 +313,7 @@ async function main() {
     case 'skills':
       return require('../lib/commands/skills.js')(parsed);
     default:
-      return fail(2, `unknown command "${parsed.command}".\n${USAGE}`);
+      return fail(2, `unknown command "${parsed.command}" (see zcode --help).`);
   }
 }
 

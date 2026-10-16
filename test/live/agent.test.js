@@ -25,7 +25,7 @@ test('agent dispatches a subagent that does real work inside --cwd', async () =>
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { code, stdout, stderr } = await cli(
         [
-          'agent', '--json', '--cwd', work, '--profile', 'general-purpose', PROMPT,
+          'agent', '--json', '--full', '--cwd', work, '--profile', 'general-purpose', PROMPT,
         ],
         { cwd: work, timeoutMs: 420000 }
       ).catch((err) => ({ code: -1, stdout: '', stderr: String(err.message) }));

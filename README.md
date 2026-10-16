@@ -19,7 +19,7 @@ The orchestrator keeps product decisions, design direction, and coordination. zc
 <tr><td><b>Status from evidence</b></td><td><code>completed</code> requires passing checks and no edits outside <code>--owns</code>. The model's own report is kept as a claim.</td></tr>
 <tr><td><b>Sessions</b></td><td>Stable ids, <code>--detach</code>, <code>status</code>, <code>wait</code>, <code>resume</code>, <code>cancel</code>. A session whose process died shows as interrupted and can be resumed.</td></tr>
 <tr><td><b>Parallel work</b></td><td>Two sessions with overlapping <code>--owns</code> in one repo are refused with exit 7.</td></tr>
-<tr><td><b>Output</b></td><td>One <code>zcode.result/1</code> JSON line with <code>--json</code>. No colour codes when stdout is not a terminal.</td></tr>
+<tr><td><b>Output</b></td><td>With <code>--json</code>, one compact <code>zcode.brief/1</code> result line (<code>--full</code> for the whole <code>zcode.result/1</code> record). Timeouts and usage errors are one line. No colour codes when stdout is not a terminal.</td></tr>
 </table>
 
 &nbsp;
@@ -96,7 +96,7 @@ not verified
   - prose acceptance criteria are confirmed only by the executor's own report
 ```
 
-That block is the format of the summary printed to stdout. The live feed (session header, phases, tools, subagents, check results) goes to stderr. With `--json` you get the same data as one machine-readable result line.
+That block is the format of the summary printed to stdout. The live feed (session header, phases, tools, subagents, check results) goes to stderr. With `--json` you get the compact brief as one machine-readable result line (see Machine interface).
 
 For small work, the objective alone is enough: `zcode task "Fix the typo in the README heading"`.
 
@@ -149,6 +149,8 @@ zcode task --detach --id page-2 --owns src/pages/team/ --check "npm run build" "
 zcode status                 # all sessions: id, state/status, kind, updated, label
 zcode status page-1 --json   # one session: state, phase, activity, recent events, result
 zcode wait page-1 page-2     # block until both finish; print each handback
+zcode wait page-1 page-2 --any   # return as soon as the first one finishes
+zcode result page-1          # a finished session's handback, without waiting
 zcode resume page-2 "Use the 2-column variant below 1024px."   # answer / follow up / retry
 zcode cancel page-1          # stop the turn and any running check; recorded as cancelled
 ```
@@ -189,6 +191,18 @@ Inside `zcode task`, subagents are optional. The executor decides when to use th
 
 `--json`: stdout carries NDJSON events, then exactly one final `{"type":"result",…}` line. With `--quiet`, the result line is the only output. For task sessions, text/reasoning deltas are left out of the events unless you pass `--stream`, so an orchestrator reading the output pays only for lifecycle events.
 
+The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestrator that spends tokens on decisions. Keys with empty values are omitted:
+
+```json
+{"type":"result","schema":"zcode.brief/1","status":"failed","ok":false,"id":"page-1","label":"home",
+ "summary":"…(≤600 chars)…","files":["src/pages/home/index.tsx"],
+ "checks":[{"command":"npm run lint","ok":true},{"command":"npm test","ok":false,"exitCode":1,"tail":"…last 1500 chars…"}],
+ "questions":[],"issues":["…"],"unresolved":[],"scopeViolations":[],"error":{"kind":"checks_failed"},
+ "result":"/…/sessions/page-1/result.json"}
+```
+
+`run` and `agent` briefs also carry `response`, because the text answer is the product there. Passing checks are reduced to `{command, ok:true}`; a failing check carries `exitCode`, `timedOut` and the last 1500 characters of its output as `tail`. `result` is the path to the full record: `result.json` on disk is always the full `zcode.result/1` record, and `--full` prints that same record instead of the brief (on `task`/`run`/`agent`/`resume`/`wait`/`result`):
+
 ```json
 {"type":"result","schema":"zcode.result/1","ok":true,"status":"completed","id":"page-1","kind":"task",
  "summary":"…","response":"…executor report…","issues":[],"questions":[],"unresolved":[],"notVerified":[],
@@ -201,7 +215,7 @@ Inside `zcode task`, subagents are optional. The executor decides when to use th
  "toolCalls":14,"durationMs":142301,"files":{"session":"…/sessions/page-1","result":"…/result.json","events":"…/events.ndjson"}}
 ```
 
-`model` and `effort` are engine-reported (from the engine's `model_request_started` event), not echoes. `sessionId` is the engine's session id; `id` is the zcode session id you pass to `status`, `wait`, `resume`, and `cancel`. A run that fails still ends with a parseable result line.
+`model` and `effort` are engine-reported (from the engine's `model_request_started` event), not echoes. `sessionId` is the engine's session id; `id` is the zcode session id you pass to `status`, `wait`, `result`, `resume`, and `cancel`. A run that fails still ends with a parseable result line.
 
 | event | meaning |
 |---|---|
@@ -213,7 +227,7 @@ Inside `zcode task`, subagents are optional. The executor decides when to use th
 | `{"type":"mcp","name","status"}` · `{"type":"retry",…}` · `{"type":"model_request_started",…}` | MCP settling, start-up retry, engine model evidence |
 | `{"type":"stream","kind":"text_delta\|reasoning_delta","delta"}` | live text (run/agent; task with `--stream`) |
 
-`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one result line per session as each finishes.
+`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one brief per session as each finishes (`--full`: full records; `--any`: stop at the first). When `--timeout-ms` elapses first it prints exactly one line per session still running, `{"type":"pending","id","state","phase","elapsedMs"}` (human mode: `<id> <state> <phase> 12m`), and exits 124. `zcode result <id> [--json] [--full]` prints a finished session's handback without waiting (exit 7 if it is still running). `zcode status` without an id is one line per session. Usage errors are always a single line (`zcode: unknown flag (did you mean …?)` for a mistyped option), never the help text.
 
 &nbsp;
 
@@ -238,7 +252,8 @@ Inside `zcode task`, subagents are optional. The executor decides when to use th
 | `--mcp` / `--mcp-inherit` / `--mcp-list` | run, task, agent | hermetic, plus the desktop's `playwright` | MCP servers (inline JSON or `@file`) |
 | `--no-browser` | run, task, agent | off | Drop the desktop's `playwright` MCP server |
 | `--skills` / `--no-skills` | run, task, agent | desktop skills | add skills; or run with none |
-| `--json`, `--quiet` | all | | see Machine interface |
+| `--json`, `--full`, `--quiet` | all | | see Machine interface |
+| `--any` | wait | off | return when the first listed session finishes |
 | `--thinking` / `--no-thinking` | turns | run on, task off | mirror reasoning to stderr |
 | `--stream`, `--include-reasoning` | turns | off | deltas in task events; full reasoning in the result |
 
