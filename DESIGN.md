@@ -967,6 +967,36 @@ After the budget `deriveStatus` returns `partial` with `visual criteria
 unmet: ...` (failing checks still win with `failed`). The results are noted
 in `notVerified` as executor judgement; zcode does no pixel check.
 
+### 18.10 0.6 — independent visual verification, live progress
+
+Evidence: a built page had an invisible headline (a scoped CSS animation never
+matched, words stayed translated out of an `overflow:hidden` wrapper) and the
+executor reported "headline visible". GLM-5.3 cannot see images; GLM-5.3-Flash
+can. `models.supportsImage` resolves it from the builtin config the same way
+as reasoning levels (last matching rule that sets it wins).
+
+`lib/verify.js` holds the verifier prompt and the lenient `zcode-visual`
+parser. In `execute()`, after the implementer's turn and passing checks,
+`verifyVisual(round)` opens a second `AppServerClient` (the client's single
+`onFrame` handler makes a second session on one client unsafe) on the same
+engine HOME, creates a session on `visionModel()` at effort `high`, runs one
+turn and kills the client. One retry; engine errors other than timeout and
+cancel become `met: null` entries. `visual` = verifier entries (declared
+criteria nobody judged are added as `met: null`); `deriveStatus` takes
+`visual` and reports unmet and not-verified separately. Repairs go to the
+implementer session and share `maxRepairs`. Verifier file edits (workspace
+diff around the round, excluding `.zcode/` and concurrent sessions) become an
+issue and never a scope violation. The old report-only follow-up is gone.
+
+Progress: `relay` counts `model_request_started`, running subagents and
+`lastToolAt`, and treats every engine event (streaming included) as
+`lastEventAt`; `setPhase` stores `phaseDetail`. `store.idleInfo` is the single
+stall rule (8 min, running only). `zcode watch` lives in
+lib/commands/sessions.js.
+
+Model default: `buildEngineHome({model})` rewrites `model:` pins to GLM-5.3 /
+GLM-5.3-Flash in copied agent profiles (`pinAgentModel`).
+
 ### 18.7 Plans (phase 7)
 
 `zcode plan` (`lib/plan.js` logic, `lib/commands/plan.js` CLI) runs a DAG of

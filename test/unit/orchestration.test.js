@@ -285,92 +285,260 @@ test('no visual flags: the prompt has no visual section and is unchanged by empt
   assert.doesNotMatch(buildTaskPrompt(normalizeContract({ objective: 'O', viewports: ['390x844'] })), /Visual verification/);
 });
 
-test('unmet visual criteria trigger a repair turn; met after repair completes, with notVerified', async () => {
-  const bad = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: false, note: 'below the fold', shot: 'shots/m.png' }];
-  const good = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: true, note: 'ok', shot: 'shots/m2.png' }];
-  fake.setScript({ turns: [{ response: done({ visual: bad }) }, { response: done({ visual: good }) }] });
-  const r = await execute(invocation(fake, { id: 'v-1', contract: { visual: ['CTA visible above the fold'], checks: ['true'] } }));
+// --- independent visual verifier ---------------------------------------------
+
+const sendLog = () => fake.log().filter((e) => e.method === 'session/send').map((e) => ({
+  sessionId: e.params.sessionId, content: e.params.content, model: e.params.modelSelection,
+}));
+const vblock = (entries) => `Looked.\n\n\`\`\`zcode-visual\n${JSON.stringify(entries)}\n\`\`\``;
+const CRIT = 'CTA visible above the fold';
+const vOk = [{ criterion: CRIT, viewport: '390x844', met: true, seen: 'Buy now', note: '', shot: 'v/1.png' }];
+const vBad = [{ criterion: CRIT, viewport: '390x844', met: false, seen: 'nothing in the hero', note: 'headline clipped', shot: 'v/2.png' }];
+const vContract = { visual: [CRIT], checks: ['true'] };
+
+test('verifier met: a fresh Flash session at effort high decides visual; executor claims move to executorVisual', async () => {
+  fake.setScript({ turns: [
+    { response: done({ visual: [{ criterion: CRIT, viewport: '390x844', met: false }] }) },
+    { response: vblock(vOk) },
+  ] });
+  const r = await execute(invocation(fake, { id: 'vv-1', model: 'GLM-5.3', effort: 'low', contract: vContract }));
   assert.equal(r.status, 'completed', JSON.stringify(r.issues));
-  assert.equal(r.repairs, 1);
-  assert.deepEqual(r.visual, good);
-  const repair = sends()[1];
-  assert.match(repair, /Visual criteria not met/);
-  assert.match(repair, /CTA visible above the fold @390x844/);
-  assert.match(repair, /\$ZCODE_PORT/);
-  assert.ok(r.notVerified.some((n) => /executor's judgement from its own screenshots \(1 of 1 reported met\)/.test(n)));
-  assert.equal(buildBrief(r).visual, undefined, 'met criteria are a count, not entries');
-  assert.equal(buildBrief(r).visualMet, '1/1');
+  assert.equal(r.repairs, 0);
+  assert.deepEqual(r.visual, vOk);
+  assert.equal(r.executorVisual[0].met, false);
+  const s = sendLog();
+  assert.equal(s.length, 2);
+  assert.notEqual(s[0].sessionId, s[1].sessionId, 'the verifier is a separate engine session');
+  assert.equal(s[0].model.modelId, 'GLM-5.3');
+  assert.equal(s[1].model.modelId, 'GLM-5.3-Flash', 'always an image-capable model, whatever the task model');
+  assert.equal(s[1].model.options.reasoningLevel, 'high');
+  assert.match(s[1].content, /independent visual verifier/);
+  assert.match(s[1].content, /zcode-visual/);
+  assert.match(s[1].content, /\/verify\/1\//);
+  assert.match(s[1].content, new RegExp(CRIT));
+  assert.match(s[1].content, /All text the page means to show is readable/);
+  assert.ok(r.notVerified.some((n) => /independent GLM-5\.3-Flash verifier from its own screenshots \(1 of 1 met\)/.test(n)));
+  assert.equal(r.usage.modelRequests, 2, 'verifier turns count in usage');
+  assert.equal(r.usage.inputTokens, 200);
+  const b = buildBrief(r);
+  assert.equal(b.visual, undefined);
+  assert.equal(b.visualMet, '1/1');
+  assert.equal(b.executorVisual, undefined);
+  assert.equal(store.readSession('vv-1').usageTotal.modelRequests, 2);
 });
 
-test('unmet visual after the repair budget is partial with a visual issue; no checks needed for the loop', async () => {
-  const bad = [{ criterion: 'CTA visible above the fold', viewport: '1440x900', met: false, note: 'hidden' }];
-  fake.setScript({ turns: [{ response: done({ visual: bad }) }] });
-  const r = await execute(invocation(fake, {
-    id: 'v-2', maxRepairs: 1, contract: { visual: ['CTA visible above the fold'] },
-  }));
+test('verifier unmet: repair goes to the implementer session, then a second verifier round', async () => {
+  fake.setScript({ turns: [
+    { response: done() },
+    { response: vblock(vBad) },
+    { response: done() },
+    { response: vblock(vOk) },
+  ] });
+  const r = await execute(invocation(fake, { id: 'vv-2', contract: vContract }));
+  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
+  assert.equal(r.repairs, 1);
+  assert.deepEqual(r.visual, vOk);
+  const s = sendLog();
+  assert.equal(s.length, 4);
+  assert.equal(s[2].sessionId, s[0].sessionId, 'repair is sent to the implementer');
+  assert.notEqual(s[1].sessionId, s[0].sessionId);
+  assert.notEqual(s[3].sessionId, s[1].sessionId, 'each round is a new session');
+  assert.match(s[2].content, /independent visual verifier/);
+  assert.match(s[2].content, /CTA visible above the fold @390x844/);
+  assert.match(s[2].content, /nothing in the hero/);
+  assert.match(s[2].content, /headline clipped/);
+  assert.match(s[2].content, /v\/2\.png/);
+  assert.match(s[3].content, /\/verify\/2\//);
+  assert.deepEqual(store.readEvents('vv-2', { tail: 50 }).filter((e) => e.type === 'phase').map((e) => e.phase + (e.round || '')),
+    ['starting', 'executing', 'checking', 'verifying1', 'repairing', 'checking', 'verifying2']);
+});
+
+test('verifier unmet after the repair budget: partial with a visual issue and the seen text in the brief', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: vblock(vBad) }, { response: done() }, { response: vblock(vBad) }] });
+  const r = await execute(invocation(fake, { id: 'vv-3', maxRepairs: 1, contract: vContract }));
   assert.equal(r.status, 'partial');
   assert.equal(r.repairs, 1);
-  assert.ok(r.issues.some((i) => /^visual criteria unmet: CTA visible above the fold @1440x900/.test(i)));
-  assert.equal(sends().length, 2);
+  assert.ok(r.issues.some((i) => /^visual criteria unmet: CTA visible above the fold @390x844/.test(i)));
+  const b = buildBrief(r);
+  assert.equal(b.visual[0].seen, 'nothing in the hero');
+  assert.equal(b.visualMet, '0/1');
 });
 
-test('visual reported nowhere counts as unmet; failing checks and unmet visual share one repair prompt', async () => {
-  const marker = path.join(fake.work, 'fixed');
-  fake.setScript({
-    turns: [
-      { response: done() },
-      { write: { path: 'fixed', content: '1' }, response: done({ visual: [{ criterion: 'v', viewport: '390x844', met: true }] }) },
-    ],
-  });
-  const r = await execute(invocation(fake, { id: 'v-3', contract: { visual: ['v'], checks: ['test -f fixed'] } }));
+test('no zcode-visual block twice: retried once, then partial with "visual not verified" (no repair)', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: 'I could not.' }, { response: 'still nothing' }] });
+  const r = await execute(invocation(fake, { id: 'vv-4', contract: vContract }));
+  assert.equal(r.status, 'partial');
+  assert.equal(r.repairs, 0);
+  assert.equal(sendLog().length, 3);
+  assert.equal(r.visual[0].met, null);
+  assert.match(r.visual[0].note, /^not verified: /);
+  assert.ok(r.issues.some((i) => /^visual not verified: /.test(i)));
+  assert.equal(buildBrief(r).visual[0].met, null);
+});
+
+test('verifier retry: a block on the second attempt is accepted', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: 'oops' }, { response: vblock(vOk) }] });
+  const r = await execute(invocation(fake, { id: 'vv-5', contract: vContract }));
   assert.equal(r.status, 'completed', JSON.stringify(r.issues));
-  assert.equal(r.repairs, 1);
-  assert.ok(fs.existsSync(marker));
-  const repair = sends()[1];
-  assert.match(repair, /acceptance checks and one failed/);
-  assert.match(repair, /v \(not reported\)/);
-  assert.equal((repair.match(/repair attempt/g) || []).length, 1);
-
-  const text = buildRepairPrompt([{ command: 'x', output: 'boom', exitCode: 1 }], { attempt: 1, maxRepairs: 2, visual: ['v @390x844'] });
-  assert.match(text, /### `x` \(exit 1\)[\s\S]*Visual criteria not met[\s\S]*- v @390x844/);
+  assert.equal(sendLog().length, 3);
 });
 
-test('repair prompt without visual is unchanged', () => {
+test('a verifier that edits workspace files is an issue, not a scope violation', async () => {
+  fake.setScript({ turns: [{ response: done() }, { write: { path: 'src/oops.txt', content: 'x' }, response: vblock(vOk) }] });
+  const r = await execute(invocation(fake, { id: 'vv-6', owns: ['docs/**'], contract: { ...vContract, owns: ['docs/**'] } }));
+  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
+  assert.deepEqual(r.scopeViolations, []);
+  assert.ok(r.issues.some((i) => /^verifier edited files: src\/oops\.txt/.test(i)));
+});
+
+test('a declared criterion the verifier omits is not verified', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: vblock([{ criterion: 'something else', viewport: '1x1', met: true, seen: 'x' }]) }] });
+  const r = await execute(invocation(fake, { id: 'vv-7', contract: vContract }));
+  assert.equal(r.status, 'partial');
+  assert.ok(r.issues.some((i) => /visual not verified: CTA visible above the fold/.test(i)));
+});
+
+test('no visual criteria: no verifier session, one turn', async () => {
+  fake.setScript({ turns: [{ response: done() }] });
+  const r = await execute(invocation(fake, { id: 'vv-8', contract: { checks: ['true'] } }));
+  assert.equal(r.status, 'completed');
+  assert.equal(sendLog().length, 1);
+  assert.equal(r.verifier, undefined);
+});
+
+test('the implementer prompt varies with image support', async () => {
+  const c = visualContract({ serve: 'npm run preview' });
+  const blind = buildTaskPrompt(c, { canSeeImages: false });
+  assert.match(blind, /You cannot see images\. Do not judge screenshots or report `visual`; an independent vision verifier will\./);
+  assert.match(blind, /non-zero box inside the viewport/);
+  assert.match(blind, /npm run preview/);
+  assert.doesNotMatch(blind, /capture screenshots/);
+  const sees = buildTaskPrompt(c, { canSeeImages: true });
+  assert.match(sees, /you can look at screenshots/);
+  assert.match(sees, /independent verifier will re-judge/);
+  assert.doesNotMatch(sees, /cannot see images/);
+
+  fake.setScript({ turns: [{ response: done() }] });
+  await execute(invocation(fake, { id: 'vv-9', model: 'GLM-5.3', contract: { visual: [CRIT] }, checks: [] }));
+  assert.match(sendLog()[0].content, /You cannot see images/);
+  fake.resetEngineState();
+  fake.setScript({ turns: [{ response: done() }] });
+  await execute(invocation(fake, { id: 'vv-10', model: 'GLM-5.3-Flash', contract: { visual: [CRIT] }, checks: [] }));
+  assert.match(sendLog().filter((x) => x.content.startsWith('You are Zcode')).pop().content, /you can look at screenshots/);
+});
+
+test('repair prompt lists verifier entries; without visual it is unchanged', () => {
+  const text = buildRepairPrompt([{ command: 'x', output: 'boom', exitCode: 1 }], {
+    attempt: 1, maxRepairs: 2, visual: [{ criterion: 'v', viewport: '390x844', seen: 'hello', note: 'cut off', shot: 'a.png' }],
+  });
+  assert.match(text, /### `x` \(exit 1\)[\s\S]*verifier found unmet[\s\S]*- v @390x844 - saw: "hello" \| cut off \| shot: a\.png/);
   const t = buildRepairPrompt([{ command: 'npm test', output: 'fail', exitCode: 1 }], { attempt: 1, maxRepairs: 2 });
   assert.match(t, /^Zcode ran the acceptance checks and one failed \(repair attempt 1 of 2\):/);
   assert.doesNotMatch(t, /isual/);
 });
 
-// --- visual report-only follow-up --------------------------------------------
-
-const vOk = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: true }];
-const vBad = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: false }];
-const vContract = { visual: ['CTA visible above the fold'], checks: ['true'] };
-
-test('missing visual: report-only follow-up completes without a repair', async () => {
-  fake.setScript({ turns: [{ response: done() }, { response: done({ visual: vOk }) }] });
-  const r = await execute(invocation(fake, { id: 'vr-1', contract: vContract }));
-  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
-  assert.equal(r.repairs, 0);
-  assert.equal(sends().length, 2);
-  assert.match(sends()[1], /^Do not redo any work\. Reply with only the handback block, including `visual` for every criterion: CTA visible above the fold/);
+test('parseVisualBlock is lenient: last block wins, met strings normalize, junk is an error', () => {
+  const { parseVisualBlock } = require('../../lib/verify.js');
+  const p = parseVisualBlock('```zcode-visual\n[]\n```\n```zcode-visual\n[{"criterion":"a","met":"yes","seen":"x"},{"criterion":"b","met":"maybe"},5]\n```');
+  assert.deepEqual(p.entries.map((e) => e.met), [true, null]);
+  assert.match(parseVisualBlock('nothing').error, /no zcode-visual block/);
+  assert.match(parseVisualBlock('```zcode-visual\n{bad\n```').error, /invalid JSON/);
+  assert.equal(parseVisualBlock('```zcode-visual\n{"visual":[{"criterion":"a","met":false}]}\n```').entries[0].met, false);
 });
 
-test('visual still missing after the follow-up goes to the repair path', async () => {
-  fake.setScript({ turns: [{ response: done() }, { response: done() }, { response: done({ visual: vOk }) }] });
-  const r = await execute(invocation(fake, { id: 'vr-2', contract: vContract }));
-  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
-  assert.equal(r.repairs, 1);
-  assert.equal(sends().length, 3);
-  assert.match(sends()[1], /^Do not redo any work/);
-  assert.match(sends()[2], /Visual criteria not met/);
+// --- Flash by default everywhere ----------------------------------------------
+
+test('every entry point defaults to GLM-5.3-Flash; plan sessions inherit it; the plan may still override', () => {
+  const { buildInvocation } = require('../../lib/commands/exec.js');
+  for (const cmd of ['run', 'task', 'agent']) {
+    assert.equal(buildInvocation(parseArgv([cmd, 'go'])).model, 'GLM-5.3-Flash', cmd);
+  }
+  const plans = require('../../lib/plan.js');
+  const file = path.join(fake.base, 'plan.json');
+  fs.writeFileSync(file, JSON.stringify({ cwd: fake.work, sessions: [{ id: 'a', objective: 'x' }, { id: 'b', objective: 'y', model: 'glm-5.3' }] }));
+  const r = plans.resolvePlan(file);
+  const [a, b] = plans.sessionList(r.plan);
+  assert.equal(plans.sessionInvocation(r, 'p', a).model, 'GLM-5.3-Flash');
+  assert.equal(plans.sessionInvocation(r, 'p', b).model, 'GLM-5.3');
 });
 
-test('visual met:false goes straight to repair with no follow-up', async () => {
-  fake.setScript({ turns: [{ response: done({ visual: vBad }) }, { response: done({ visual: vOk }) }] });
-  const r = await execute(invocation(fake, { id: 'vr-3', contract: vContract }));
-  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
-  assert.equal(r.repairs, 1);
-  assert.equal(sends().length, 2);
-  assert.match(sends()[1], /Visual criteria not met/);
+test('resume keeps the session model; a model-less settings file falls back to Flash', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: done() }] });
+  await execute(invocation(fake, { id: 'rs-1', checks: [] }));
+  const { readSettings } = require('../../lib/executor.js');
+  assert.equal(readSettings('rs-1').model, 'GLM-5.3-Flash');
+});
+
+test('copied agent profiles follow the session model; the live files are untouched', async () => {
+  fs.mkdirSync(path.join(fake.live, 'agents'), { recursive: true });
+  const pins = {
+    'a.md': '---\nname: a\nmodel: "account:zai-individual-coding-plan/GLM-5.3"\n---\nbody\n',
+    'b.md': '---\nname: b\nmodel: "custom:account%3Azai-individual-coding-plan:GLM-5.3"\n---\nbody\n',
+    'c.md': '---\nname: c\nmodel: account:zai-individual-coding-plan/GLM-5.3-Flash\n---\nbody\n',
+    'd.md': '---\nname: d\nmodel: other/model\n---\nuse GLM-5.3 here\n',
+    'e.md': '# no frontmatter\nmodel: x/GLM-5.3\n',
+  };
+  for (const [n, t] of Object.entries(pins)) fs.writeFileSync(path.join(fake.live, 'agents', n), t);
+  const { buildEngineHome } = require('../../lib/isolation.js');
+  const home = path.join(fake.base, 'h');
+  buildEngineHome({ home, root: fake.root, key: 'k', live: fake.live });
+  const got = (n) => fs.readFileSync(path.join(home, '.zcode', 'agents', n), 'utf8');
+  assert.match(got('a.md'), /model: "account:zai-individual-coding-plan\/GLM-5\.3-Flash"/, 'default session model is Flash');
+  assert.match(got('b.md'), /model: "custom:account%3Azai-individual-coding-plan:GLM-5\.3-Flash"/);
+  assert.equal(got('d.md'), pins['d.md']);
+  assert.equal(got('e.md'), pins['e.md']);
+  buildEngineHome({ home, root: fake.root, key: 'k', live: fake.live, model: 'GLM-5.3' });
+  assert.match(got('a.md'), /GLM-5\.3"\n/);
+  assert.match(got('c.md'), /plan\/GLM-5\.3\n/);
+  for (const [n, t] of Object.entries(pins)) assert.equal(fs.readFileSync(path.join(fake.live, 'agents', n), 'utf8'), t);
+});
+
+// --- watch / idle ---------------------------------------------------------------
+
+test('doctor: models report image support; --json has vision', () => {
+  const { supportsImage, modelVision, visionModel } = require('../../lib/models.js');
+  assert.deepEqual(modelVision({ builtinConfig: fake.base + '/zcode-builtin.json' }), { 'GLM-5.3': false, 'GLM-5.3-Flash': true });
+  assert.equal(supportsImage('GLM-5.3'), false);
+  assert.equal(visionModel({ builtinConfig: fake.base + '/zcode-builtin.json' }), 'GLM-5.3-Flash');
+  const rules = path.join(fake.base, 'rules.json');
+  fs.writeFileSync(rules, JSON.stringify({ config: { modelConfigRules: { modelRules: [
+    { modelMatch: '.*glm-5\\.3(?:-flash)?.*', config: { properties: { inputFormat: { supportsImage: false } } } },
+    { modelMatch: '.*glm-5\\.3-flash.*', config: { properties: { inputFormat: { supportsImage: true } } } },
+  ] } } }));
+  assert.deepEqual(modelVision({ builtinConfig: rules }), { 'GLM-5.3': false, 'GLM-5.3-Flash': true });
+});
+
+test('idleInfo: only running sessions; stalled after the threshold', () => {
+  const now = Date.now();
+  const view = (ago, state = 'running') => ({ state, activity: { lastEventAt: new Date(now - ago).toISOString() } });
+  assert.equal(store.idleInfo(view(1000, 'finished'), { now }), null);
+  assert.deepEqual(store.idleInfo(view(5000), { now }), { idleMs: 5000 });
+  assert.deepEqual(store.idleInfo(view(9 * 60000), { now }), { idleMs: 9 * 60000, stalled: true });
+  assert.deepEqual(store.idleInfo(view(2 * 60000), { now, stallMin: 1 }), { idleMs: 120000, stalled: true });
+});
+
+test('watch: piped output prints a changed line once; exits 0 when finished; --help is small', async () => {
+  fake.setScript({ turns: [{ response: done(), tool: 'Write' }] });
+  await execute(invocation(fake, { id: 'wt-1', checks: [] }));
+  const r = cli(['watch', 'wt-1']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^wt-1  \S+  \S+  last: Write \S+ ago  req 1  sub 0\n$/);
+  const none = cli(['watch', 'nope']);
+  assert.equal(none.status, 2);
+  const h = cli(['watch', '--help']);
+  assert.ok(h.stdout.length <= 2000);
+  assert.match(h.stdout, /usage: zcode watch/);
+  assert.equal(cli(['watch', '--stall-min', 'x', 'wt-1']).status, 2);
+  assert.equal(cli(['status', '--plan', 'x']).status, 2);
+});
+
+test('status --json reports idleMs for a running session and stalled past 8 minutes', () => {
+  const rec = store.createSession('st-1', { kind: 'task', cwd: fake.work, model: 'GLM-5.3-Flash', effort: 'max', owns: [], checks: [] });
+  store.updateSession('st-1', { state: 'running', phase: 'executing', pid: process.pid, activity: { lastEventAt: new Date(Date.now() - 9 * 60000).toISOString(), modelRequests: 3 } });
+  const j = JSON.parse(cli(['status', 'st-1', '--json']).stdout);
+  assert.equal(j.stalled, true);
+  assert.ok(j.idleMs >= 9 * 60000);
+  assert.match(cli(['status', 'st-1']).stdout, /STALLED\?/);
+  assert.match(cli(['wait', 'st-1', '--timeout-ms', '300']).stdout, /^st-1 running executing \S+ idle \S+ STALLED\?\n$/);
+  void rec;
 });

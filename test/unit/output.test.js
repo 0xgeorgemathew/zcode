@@ -129,7 +129,7 @@ test('wait timeout: exactly one line per pending session (json and human), exit 
   const lines = j.stdout.trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(lines.length, 2);
   for (const l of lines) {
-    assert.deepEqual(Object.keys(l).sort(), ['elapsedMs', 'id', 'phase', 'state', 'type']);
+    assert.deepEqual(Object.keys(l).sort(), ['elapsedMs', 'id', 'idleMs', 'phase', 'state', 'type']);
     assert.equal(l.type, 'pending');
     assert.equal(typeof l.elapsedMs, 'number');
   }

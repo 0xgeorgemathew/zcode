@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0
+
+Independent visual verification and live progress, from a real run whose hero headline was invisible while the executor reported it visible: GLM-5.3 cannot see images (reading a PNG returns only an upload confirmation), so it judged from the DOM, and it graded its own work.
+
+### Added
+
+- `supportsImage(model)` (lib/models.js): read from the engine's builtin provider config (`modelRules[].config.properties.inputFormat.supportsImage`, last matching rule wins), fallback `{GLM-5.3: false, GLM-5.3-Flash: true}`. `zcode doctor` prints `images` / `no images` per model; `doctor --json` gains `vision: {id: bool}`.
+- Independent visual verifier (lib/verify.js, lib/executor.js): for tasks with `--visual`, zcode opens a fresh engine session on the first image-capable model (GLM-5.3-Flash, effort `high`), which serves the app, screenshots every viewport into `$ZCODE_OUT/verify/<round>/`, looks at the images and answers with a `zcode-visual` block (`criterion, viewport, met, seen, note, shot`), plus a built-in readability criterion. Its entries are the authoritative `visual`; the implementer's claims move to `executorVisual` (full record only). Unmet entries trigger a repair turn to the implementer (shared repair budget) and a new round; a verifier that fails twice yields `met: null` and `partial` with `visual not verified`. New phase `verifying` (`verifying round N`); verifier turns count in `usage`; briefs carry `seen` (200 chars) for unmet entries.
+- `zcode watch [<id>… | --plan <name>] [--stall-min 8]`: live one-line-per-session view (TTY redraw every 2 s, piped: print on change). `status` gains `idleMs`/`stalled`, `wait`/`plan wait` pending lines gain `idleMs`/`stalled`. The session record's `activity` gains `modelRequests`, `subagentsRunning`, `lastToolAt`; `phaseDetail` carries the repair attempt / verify round.
+
+### Changed
+
+- The implementer prompt depends on image support: a model that cannot see images is told not to judge screenshots or report `visual` and to self-check visibility in the DOM; one that can is told an independent verifier re-judges. The report-only visual follow-up is removed (the verifier replaces it). The `notVerified` line now reads "visual criteria judged by an independent <model> verifier from its own screenshots (M of N met)".
+- Flash everywhere by default: agent profiles copied from the desktop into a session's engine home have a frontmatter `model:` naming GLM-5.3 or GLM-5.3-Flash rewritten to the session's model (prefix kept; the live files are never edited). README examples use the default model.
+
 ## 0.5.2
 
 Fixes from a real orchestrated run: smaller briefs, friendlier plan files, long tasks that survive, quieter discovery.

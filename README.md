@@ -51,7 +51,7 @@ The Claude Code skill goes to `~/.claude/skills/zcode` and the Codex skill to `$
 
 ## Models and effort
 
-Every command runs on GLM-5.3-Flash at effort `max` unless you pass a flag.
+Every command runs on GLM-5.3-Flash (it sees images) at effort `max` unless you pass a flag. `--model glm-5.3` is an explicit override: GLM-5.3 cannot see images (`zcode doctor` shows `images` / `no images` per model). Plan sessions, units, resume, `run` and `agent` all default to Flash too, and the visual verifier always uses an image-capable model. Subagent profiles copied from your desktop that pin a GLM-5.3 id are rewritten in the session's copy to the session's model.
 
 | setting | flag | values | default |
 |---|---|---|---|
@@ -117,7 +117,6 @@ Flags cover the common fields. For richer handoffs, pass `--task contract.json`,
   "context": ["Copy lives in content/team.json"],
   "owns": ["src/pages/team/**", "content/team.json"],
   "limits": { "timeoutMs": 7200000, "maxRepairs": 2, "checkTimeoutMs": 300000 },
-  "model": "glm-5.3",
   "effort": "high"
 }
 ```
@@ -130,7 +129,7 @@ A file passed with `--file` and also inlined with `--context @file` reaches the 
 
 **Units.** `--unit "name: objective [owns a,b]"` (repeatable; contract `units: [{name, objective, owns?}]`) makes the executor dispatch each unit to its own subagent inside this one session, in parallel where independent, then integrate and verify the whole. Unit `owns` must lie within the session's `--owns` and be disjoint from each other (exit 2 otherwise). The handback `units: [{name, status, note}]` is listed under `notVerified` as executor claims; zcode's checks still verify the integrated result.
 
-**Visual verification.** `--visual "criterion"` (repeatable; contract `visual`), `--viewport WxH` (repeatable, default `390x844` and `1440x900`; contract `viewports`) and `--serve "cmd"` (contract `serve`; must honour `$ZCODE_PORT`, default: the executor reads `package.json`) have the executor serve the app on `$ZCODE_PORT`, capture Playwright screenshots into `$ZCODE_OUT/shots` at each viewport, look at them, fix and re-capture, and report `visual: [{criterion, viewport, met, note, shot}]`. zcode runs no pixel check: results are executor judgement (`notVerified`). Unmet criteria spend the repair budget like failing checks (one combined repair turn when both occur); still unmet afterwards, the result is `partial` with the issue `visual criteria unmet: …`. Without `--visual` nothing changes.
+**Visual verification.** `--visual "criterion"` (repeatable; contract `visual`), `--viewport WxH` (repeatable, default `390x844` and `1440x900`; contract `viewports`) and `--serve "cmd"` (contract `serve`; must honour `$ZCODE_PORT`, default: the executor reads `package.json`) make zcode, not the implementer, judge the rendered result. After the implementer's turn (and once the checks pass) zcode opens a fresh engine session on the first image-capable model (GLM-5.3-Flash, effort `high`, same workspace and session environment) that did not build the result. It serves the app on `$ZCODE_PORT`, waits for fonts and animations, captures viewport and full-page screenshots into `$ZCODE_OUT/verify/<round>/` at each viewport, looks at them, makes no edits, and answers with a `zcode-visual` block: `[{criterion, viewport, met, seen, note, shot}]`, quoting the text it can read (`seen`). It also always judges one built-in criterion: all text the page means to show is readable after animations finish (not clipped, hidden, transparent, off-screen or overlapped). Those entries are the result's `visual`; the implementer's own claims are kept only as `executorVisual` in the full record. Unmet criteria spend the repair budget like failing checks (the repair turn goes to the implementer with the verifier's `seen`, note and shot paths; then checks and a new verifier round run). A verifier that fails or returns no parsable block is retried once; still nothing gives `met: null`, status `partial` and the issue `visual not verified`. Still unmet after the budget: `partial` with `visual criteria unmet: …`. An implementer on a model that cannot see images is told so and to self-check visibility in the DOM instead. Files the verifier changes outside `.zcode/` are reported as the issue `verifier edited files: …`. Verifier turns count in `usage`. Without `--visual` nothing changes.
 
 ### Status: what a result means
 
@@ -213,7 +212,7 @@ A session starts once everything it is `after` has completed; sessions that can 
 
 ```sh
 zcode "What is 17*23? Reply with only the number."
-zcode --model glm-5.3 --effort high "Draft a commit message for the staged diff"
+zcode --effort high "Draft a commit message for the staged diff"
 echo "$PROMPT" | zcode
 ```
 
@@ -263,7 +262,7 @@ The brief lists unmet visual criteria only (`visualMet: "M/N"` counts them all),
 | `{"type":"mcp","name","status"}` · `{"type":"retry",…}` · `{"type":"model_request_started",…}` | MCP settling, start-up retry, engine model evidence |
 | `{"type":"stream","kind":"text_delta\|reasoning_delta","delta"}` | live text (run/agent; task with `--stream`) |
 
-`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one brief per session as each finishes (`--full`: full records; `--any`: stop at the first). When `--timeout-ms` elapses first it prints exactly one line per session still running, `{"type":"pending","id","state","phase","elapsedMs"}` (human mode: `<id> <state> <phase> 12m`), and exits 124. `zcode result <id> [--json] [--full]` prints a finished session's handback without waiting (exit 7 if it is still running). `zcode status` without an id is one line for each of the 15 most recent sessions plus `… N more (zcode status --all)`. `zcode <command> --help` prints only that command's usage (under 2000 bytes); bare `zcode --help` is the full reference. Usage errors are always a single line (`zcode: unknown flag (did you mean …?)` for a mistyped option), never the help text.
+`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one brief per session as each finishes (`--full`: full records; `--any`: stop at the first). When `--timeout-ms` elapses first it prints exactly one line per session still running, `{"type":"pending","id","state","phase","elapsedMs"}` (human mode: `<id> <state> <phase> 12m`), and exits 124. `zcode watch [<id>… | --plan <name>] [--stall-min 8]` is a live view for humans (no model tokens): one line per session, `id  state phase[ n/m]  elapsed  last: <tool> <age> ago  req <n>  sub <running>`, with `STALLED?` appended when a running session has had no engine event for `--stall-min` minutes (default 8). On a TTY it redraws every 2 s; piped, it prints a line when a session changes; it exits 0 when every watched session has finished (no arguments: live sessions and those finished in the last 10 minutes). `status <id>` (human and `--json`) gains `idleMs` and `stalled: true` for running sessions by the same rule, and `wait` / `plan wait` pending lines carry `idleMs` (`stalled: true` when so). Nothing is done automatically. `zcode result <id> [--json] [--full]` prints a finished session's handback without waiting (exit 7 if it is still running). `zcode status` without an id is one line for each of the 15 most recent sessions plus `… N more (zcode status --all)`. `zcode <command> --help` prints only that command's usage (under 2000 bytes); bare `zcode --help` is the full reference. Usage errors are always a single line (`zcode: unknown flag (did you mean …?)` for a mistyped option), never the help text.
 
 &nbsp;
 
@@ -282,7 +281,7 @@ The brief lists unmet visual criteria only (`visualMet: "M/N"` counts them all),
 | `--decision`, `--decisions` | task | | repeatable binding decisions; `--decisions @file` reads a file |
 | `--preflight` | task | off | read-only turn that returns the open questions; `resume <id> "<answers>"` then executes |
 | `--unit` | task | | repeatable `"name: objective [owns a,b]"`; one subagent per unit |
-| `--visual`, `--viewport`, `--serve` | task | viewports `390x844`, `1440x900` | executor screenshots the app with Playwright and judges each criterion |
+| `--visual`, `--viewport`, `--serve` | task | viewports `390x844`, `1440x900` | an independent image-capable verifier screenshots the app and judges each criterion |
 | `--max-repairs` | task, resume | `2` | repair turns after failing checks |
 | `--check-timeout-ms` | task, resume | `300000` | per check; checks get `CI=1` when unset |
 | `--model` | all turns | `glm-5.3-flash` | `glm-5.3` plus aliases `5.3`, `53`, `flash`, `5.3-flash`, `53f` |

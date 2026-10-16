@@ -256,7 +256,8 @@ test('status stays accurate when the supervisor dies; plan resume restarts super
   // A is still running without a supervisor.
   let s = lines((await run(['plan', 'status', 'dead', '--json'])).stdout)[0];
   assert.equal(s.status, 'running');
-  assert.deepEqual(s.sessions, [{ id: 'A', status: 'running' }, { id: 'B', status: 'pending' }]);
+  assert.deepEqual(s.sessions.map((x) => ({ id: x.id, status: x.status })), [{ id: 'A', status: 'running' }, { id: 'B', status: 'pending' }]);
+  assert.equal(typeof s.sessions[0].idleMs, 'number');
 
   await run(['cancel', 'A']);
   s = lines((await run(['plan', 'status', 'dead', '--json'])).stdout)[0];

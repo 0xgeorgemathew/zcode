@@ -11,6 +11,8 @@ const USAGE = `usage:
   zcode resume <id> [message…]         continue a session (answer, follow-up, retry)
   zcode status [<id>] [--all] [--json] one session in detail, or the 15 most recent (--all: every session)
   zcode wait <id…> [--any] [--json]    block until sessions finish; print handbacks
+  zcode watch [<id…> | --plan <name>] [--stall-min n]
+                                       live one-line-per-session view (no model tokens); exits when all finish
   zcode result <id> [--full] [--json]  print a finished session's handback (brief by default)
   zcode cancel <id> [--json]           stop a running session
   zcode plan check <file>              validate a plan file (ids, after, cycles, owns, effort)
@@ -55,8 +57,9 @@ task contract (task only):
                         zcode resume <id> "<answers>" executes the task
   --unit "n: goal [owns a,b]"  repeatable: one subagent per unit inside this
                         session; owns must lie within --owns and be disjoint
-  --visual <criterion>  repeatable: the executor serves the app on $ZCODE_PORT,
-                        screenshots it with Playwright and judges each criterion
+  --visual <criterion>  repeatable: after the work an independent image-capable
+                        verifier (GLM-5.3-Flash, fresh session) serves the app on
+                        $ZCODE_PORT, screenshots it and judges each criterion
   --viewport <WxH>      repeatable viewport for --visual (default 390x844, 1440x900)
   --serve <cmd>         command that serves the app for --visual (honours $ZCODE_PORT)
   --max-repairs <n>     repair turns after failing checks (default 2)
@@ -143,7 +146,7 @@ function parseMcpSpec(value) {
   return parsed;
 }
 
-const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', 'plan', '__plan', '__exec']);
+const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'watch', 'cancel', 'login', 'doctor', 'skills', 'result', 'plan', '__plan', '__exec']);
 const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'touch', 'maxRepairs', 'checkTimeoutMs', 'decisions', 'units', 'visual', 'viewports', 'serve', 'preflight']);
 const FULL_COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'wait', 'result', '__exec']);
 const START_ONLY = new Set(['id', 'label', 'owns', 'touch', 'preflight', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
@@ -192,6 +195,8 @@ function parseArgv(argv) {
       quiet: false,
       thinking: undefined,
       stream: false,
+      plan: undefined,
+      stallMin: undefined,
       full: false,
       any: false,
       all: false,
@@ -201,7 +206,7 @@ function parseArgv(argv) {
     ['--model', 'model'], ['--effort', 'effort'], ['--cwd', 'cwd'], ['--profile', 'profile'],
     ['--timeout-ms', 'timeoutMs'], ['-p', 'prompt'], ['--prompt', 'prompt'], ['--session', 'session'],
     ['--id', 'id'], ['--label', 'label'], ['--task', 'task'], ['--max-repairs', 'maxRepairs'],
-    ['--check-timeout-ms', 'checkTimeoutMs'], ['--serve', 'serve'],
+    ['--check-timeout-ms', 'checkTimeoutMs'], ['--serve', 'serve'], ['--plan', 'plan'], ['--stall-min', 'stallMin'],
   ]);
   const listFlags = new Map([
     ['--mcp', 'mcpSpecs'], ['--skills', 'skillsDirs'], ['--accept', 'accept'], ['--check', 'check'],
@@ -231,6 +236,7 @@ function parseArgv(argv) {
       if (value === undefined) fail(2, `option ${arg} requires a value.`);
       out.given.add(key);
       if (key === 'timeoutMs' || key === 'checkTimeoutMs') out.flags[key] = numeric(arg, value);
+      else if (key === 'stallMin') out.flags[key] = numeric(arg, value, { min: 0 });
       else if (key === 'maxRepairs') out.flags[key] = numeric(arg, value, { min: 0 });
       else if (key === 'mcpSpecs') out.flags.mcpSpecs.push(parseMcpSpec(value));
       else if (key === 'skillsDirs') {
@@ -296,6 +302,9 @@ function parseArgv(argv) {
     }
   }
   if (out.given.has('all') && cmd !== 'status') fail(2, '--all is only valid with "zcode status".');
+  for (const k of ['plan', 'stallMin']) {
+    if (out.given.has(k) && cmd !== 'watch') fail(2, `--${flagName(k)} is only valid with "zcode watch".`);
+  }
   if (out.given.has('any') && cmd !== 'wait') fail(2, '--any is only valid with "zcode wait".');
   if (out.given.has('full') && !FULL_COMMANDS.has(cmd)) fail(2, `--full is not valid with "zcode ${cmd}".`);
   if (out.given.has('session') && cmd !== 'run' && cmd !== 'plan') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');
@@ -366,6 +375,7 @@ async function main() {
       return require('../lib/commands/plan.js')(parsed);
     case 'status':
     case 'wait':
+    case 'watch':
     case 'result':
     case 'cancel':
       return require('../lib/commands/sessions.js')(parsed);
