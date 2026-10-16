@@ -44,11 +44,16 @@ test('--mcp-list prints the effective server set including the added server', as
   assert.equal(parsed.servers['word-server'].type, 'stdio');
 });
 
-test('default MCP set is hermetic (empty); --mcp-inherit lists the desktop servers', async () => {
+test('default MCP set is hermetic (only the desktop playwright browser; --no-browser: empty); --mcp-inherit lists the desktop servers', async () => {
   const hermetic = await cli(['--mcp-list'], { timeoutMs: 120000 });
   assert.equal(hermetic.code, 0, hermetic.stderr.trim());
-  const empty = JSON.parse(hermetic.stdout.trim().split('\n').pop());
-  assert.deepEqual(empty.servers, {}, 'no --mcp and no --mcp-inherit means no servers');
+  const dflt = JSON.parse(hermetic.stdout.trim().split('\n').pop());
+  assert.deepEqual(Object.keys(dflt.servers), ['playwright'], 'no --mcp/--mcp-inherit: only the browser server');
+
+  const bare = await cli(['--no-browser', '--mcp-list'], { timeoutMs: 120000 });
+  assert.equal(bare.code, 0, bare.stderr.trim());
+  const empty = JSON.parse(bare.stdout.trim().split('\n').pop());
+  assert.deepEqual(empty.servers, {}, '--no-browser and no --mcp/--mcp-inherit means no servers');
 
   const inherited = await cli(['--mcp-inherit', '--mcp-list'], { timeoutMs: 120000 });
   assert.equal(inherited.code, 0, inherited.stderr.trim());

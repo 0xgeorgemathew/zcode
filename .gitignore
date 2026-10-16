@@ -3,3 +3,6 @@
 node_modules/
 .zcode/
 .zcodeignore
+.playwright-mcp/
+*.tgz
+test-results/

@@ -229,7 +229,7 @@ test('detached supervisor: one-line start, plan wait timeout (one line, 124), th
   assert.deepEqual(t.sessions[1], { id: 'B', status: 'pending' });
   const human = await run(['plan', 'wait', 'det', '--timeout-ms', '800']);
   assert.equal(human.code, 124);
-  assert.match(human.stdout, /^A (queued|running)\nB pending\n$/);
+  assert.match(human.stdout, /^plan det: running \(A (queued|running), B pending\)\n$/, 'human timeout is exactly one line');
 
   await until(() => store.readSession('A').phase === 'executing');
   await run(['cancel', 'A']);

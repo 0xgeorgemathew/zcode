@@ -405,6 +405,10 @@ request, a 15 s stall, or a de-facto deny. Strategy, in order:
 
 ## 10. CLI surface
 
+> 0.1 surface, kept for history. The current command reference is `zcode --help` and
+> the README; the 0.5 changes are in §18 (task/plan/result/wait, `--full`,
+> `--quiet`, `--decision(s)`, `--preflight`, `--unit`, `--visual`, `--touch`).
+
 ```
 zai-code [prompt…]                     one-shot turn (prompt from argv or stdin)
 zai-code -p, --prompt <text>           same (familiarity alias)
@@ -1035,3 +1039,18 @@ verbatim. The plan name is `--id` or the file's basename.
 
 `usage()` in exec.js now throws `UsageError` (turned into the one-line exit 2
 at the command entry) so the builders can run inside the supervisor.
+
+### 18.8 Release notes folded in at 0.5.0
+
+- `--json` prints the brief (`zcode.brief/1`); `--full` restores the whole
+  `zcode.result/1` record (`result.json` on disk is always full).
+- `--quiet` suppresses progress; usage errors are always one line.
+- `zcode plan check <file>` validates ids/after/cycles/owns/effort without
+  spawning; `plan wait|status` timeouts print one stdout line in human mode.
+- Tooling scratch directories (`.zcode/`, the Playwright MCP's
+  `.playwright-mcp/`) are never reported as task changes or scope violations.
+  Found by the live `--visual` smoke: the browser wrote logs and snapshots into
+  `--cwd`, which turned every visual session `partial`.
+- The default MCP set is the desktop's playwright server only (`--no-browser`
+  for none); the engine (0.16.9) no longer broadcasts the mode over
+  `state.updated`, so the session's own `mode` field is the yolo evidence.

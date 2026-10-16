@@ -13,7 +13,7 @@ const path = require('node:path');
 const { cli, checkEngine, loadEnvKey } = require('../helpers/env.js');
 
 test('CLI root is never the live ~/.zcode and never inside it', () => {
-  const { rootDir, LIVE_ZCODE } = require('../lib/isolation.js');
+  const { rootDir, LIVE_ZCODE } = require('../../lib/isolation.js');
   const root = rootDir({});
   assert.notEqual(root, LIVE_ZCODE, 'root must not equal the live dir');
   assert.ok(

@@ -86,8 +86,10 @@ test('Flash one-shot: OK, model+effort on the wire, yolo mode, usage, streaming'
       assert.equal(e.providerId, 'zai-api', 'engine-reported provider id');
     }
     const stateFrames = events.filter((e) => e.type === 'state');
-    const modeFrames = stateFrames.filter((e) => e.mode === 'yolo');
-    assert.ok(modeFrames.length >= 1, 'engine broadcast mode yolo via state.updated');
+    // Engine 0.16.9 no longer broadcasts state.updated for the mode on a fresh
+    // session (result.mode above is the session's own report). When a frame
+    // does arrive it must say yolo.
+    for (const f of stateFrames) assert.equal(f.mode, 'yolo', 'engine-broadcast mode must be yolo');
 
     const streams = events.filter((e) => e.type === 'stream');
     assert.ok(streams.length >= 1, '>=1 model.streaming event streamed');

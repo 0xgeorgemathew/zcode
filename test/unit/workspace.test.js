@@ -118,3 +118,10 @@ test('leases: overlap refused, disjoint allowed, stale leases reaped, --allow-ov
   assert.ok(!fs.existsSync(path.join(ws.leaseDir(root), 'ghost.json')));
   e.release();
 });
+
+test('isZcodePath: .zcode and Playwright MCP scratch dirs are tooling output, not task changes', () => {
+  assert.ok(ws.isZcodePath('.zcode/out/a/shots/x.png'));
+  assert.ok(ws.isZcodePath('.playwright-mcp/page-1.yml'));
+  assert.ok(ws.isZcodePath('app/.playwright-mcp/console.log'));
+  assert.ok(!ws.isZcodePath('src/playwright-mcp.js'));
+});
