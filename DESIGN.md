@@ -312,7 +312,8 @@ GLM-5.3 is one `--model glm-5.3` away — matches "most testing on Flash").
 - Live-observed levels for Flash: `[low, high, max]`, default `max`
   (research: `effortControl`, registry event). GLM-5.3's exact level set was
   never observed — `medium`/`xhigh` may be rejected server-side on either
-  model. On engine error events the wrapper surfaces the message verbatim and
+  model (0.5: superseded, the builtin provider config lists `low|high|max` for
+  both and zcode refuses anything else before spawning, §18.2). On engine error events the wrapper surfaces the message verbatim and
   exits 5; `max` (the default and the only guaranteed-portable choice) is what
   the user's own logs show on both models (58× max, 34× high, research:
   `effortControl`).
@@ -872,3 +873,15 @@ always-on new sections (<= 400 B); wall time <= baseline + 5% (+300 ms).
   exit 124. `--any` returns the first finished session (its exit code).
 - Usage errors are one line with a did-you-mean for unknown flags; the help
   text is only printed by `--help`.
+
+### 18.2 Effort validation before spawn (phase 2)
+
+`lib/models.js` reads the supported reasoning levels per model from the
+engine's builtin provider config (`modelConfigRules.modelRules[]`; the last
+matching rule that lists `reasoningLevel.values` wins; both GLM-5.3 and
+GLM-5.3-Flash list `low|high|max`), with a built-in fallback table.
+`exec.js` checks the final model+effort pair (flag, contract, or a resumed
+session's settings) before any session record or engine exists: exit 2,
+one line. `doctor --json` reports `models: {id: [levels]}`. `medium` and
+`xhigh` stay in the effort enum (so the message can say they are
+unsupported) but are refused for both models.

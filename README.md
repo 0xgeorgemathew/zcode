@@ -56,13 +56,13 @@ Every command runs on GLM-5.3-Flash at effort `max` unless you pass a flag.
 | setting | flag | values | default |
 |---|---|---|---|
 | model | `--model` | `glm-5.3-flash` (aliases `flash`, `5.3-flash`, `53f`), `glm-5.3` (aliases `5.3`, `53`) | `glm-5.3-flash` |
-| effort | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` | `max` |
+| effort | `--effort` | `low`, `high`, `max` (the engine's levels for both models; `zcode doctor` lists them) | `max` |
 
 ```sh
 zcode task "..."                                   # GLM-5.3-Flash, effort max
 zcode task --effort high "..."                     # Flash with less reasoning
 zcode task --model glm-5.3 "..."                   # GLM-5.3, effort max
-zcode task --model glm-5.3 --effort medium "..."   # GLM-5.3, effort medium
+zcode task --model glm-5.3 --effort high "..."     # GLM-5.3, effort high
 ```
 
 A task contract can set `"model"` and `"effort"`. Flags override the contract. A resumed session keeps its original model and effort unless you pass the flags again.
@@ -245,7 +245,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `--max-repairs` | task, resume | `2` | repair turns after failing checks |
 | `--check-timeout-ms` | task, resume | `300000` | per check; checks get `CI=1` when unset |
 | `--model` | all turns | `glm-5.3-flash` | `glm-5.3` plus aliases `5.3`, `53`, `flash`, `5.3-flash`, `53f` |
-| `--effort` | all turns | `max` | `low`, `medium`, `high`, `xhigh`, `max` |
+| `--effort` | all turns | `max` | the model's levels: `low`, `high`, `max` |
 | `--timeout-ms` | all turns; wait | run 600000, task 1800000 | the whole invocation incl. checks and repairs |
 | `--session` | run | | 0.3 compat: continue by zcode id or engine `sess_` id |
 | `--profile` | agent | `general-purpose` | subagent profile |
@@ -257,7 +257,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `--thinking` / `--no-thinking` | turns | run on, task off | mirror reasoning to stderr |
 | `--stream`, `--include-reasoning` | turns | off | deltas in task events; full reasoning in the result |
 
-Only `glm-5.3` and `glm-5.3-flash` are accepted; anything else exits 2 before any spawn. Effort levels `low`, `high`, and `max` have been observed live on Flash. `medium` and `xhigh` may be rejected server-side.
+Only `glm-5.3` and `glm-5.3-flash` are accepted; anything else exits 2 before any spawn. The effort levels each model accepts are read from the engine's builtin provider config (`zcode doctor --json` lists them as `models`; a built-in table is the fallback). An unsupported model and effort pair, whether from `--effort`, the task contract, or a resumed session's stored setting, exits 2 with one line naming the supported values, before any engine is spawned.
 
 ## Exit codes
 

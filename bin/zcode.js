@@ -40,7 +40,9 @@ task contract (task only):
 
 execution:
   --model <id>          glm-5.3 | glm-5.3-flash (+aliases). default: glm-5.3-flash
-  --effort <level>      low | medium | high | xhigh | max. default: max
+  --effort <level>      low | high | max for both models (zcode doctor lists the
+                        engine's levels per model); an unsupported level exits 2
+                        before any spawn. default: max
   --timeout-ms <n>      whole invocation incl. checks/repairs (default 600000;
                         task default 1800000)
   --profile <name>      subagent profile (agent command; default general-purpose)
