@@ -1,6 +1,6 @@
 {
   "name": "@0xgeorgemathew/zcode",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Lean GLM-5.3 execution engine for orchestrator agents: task contracts, independent sessions, zcode-run verification, structured handbacks, subagents, MCP, skills. Wraps the ZCode engine. Zero dependencies.",
   "license": "MIT",
   "private": false,
