@@ -14,6 +14,8 @@ const USAGE = `usage:
   zcode cancel <id> [--json]           stop a running session
   zcode login                          read API key from stdin → credentials
   zcode doctor [--json]                engine + isolation + key report
+  zcode skills [install|uninstall] [claude|codex]
+                                       install the orchestrator skills (default: status)
 
 session:
   --id <id>             name the session (letters, digits, . _ -); default zc-<random>.
@@ -95,7 +97,7 @@ function parseMcpSpec(value) {
   return parsed;
 }
 
-const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', '__exec']);
+const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', '__exec']);
 const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'maxRepairs', 'checkTimeoutMs']);
 const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
 
@@ -267,6 +269,8 @@ async function main() {
       return require('../lib/commands/login.js')(parsed);
     case 'doctor':
       return require('../lib/commands/doctor.js')(parsed);
+    case 'skills':
+      return require('../lib/commands/skills.js')(parsed);
     default:
       return fail(2, `unknown command "${parsed.command}".\n${USAGE}`);
   }

@@ -30,13 +30,22 @@ The orchestrator keeps product decisions, design direction, and coordination. zc
 npm install -g @0xgeorgemathew/zcode
 echo "$ZAI_API_KEY" | zcode login    # stores your Z.AI key with mode 600; zcode never prints it
 zcode doctor                         # checks the engine, isolation and key
+zcode skills install                 # optional: teach Claude Code and Codex to delegate to zcode
 
 zcode task --check "npm test" "Fix the off-by-one in src/paginate.ts"
 ```
 
 The CLI needs node 20 or later. The engine child runs best on node 26. zcode also needs the ZCode engine, which today ships inside the ZCode desktop app; zcode finds it automatically.
 
-Installing the package also installs the Claude Code skill to `~/.claude/skills/zcode` and the Codex skill to `${CODEX_HOME:-~/.codex}/skills/zcode`. These skills teach the orchestrator how to delegate to zcode. Set `ZCODE_SKIP_SKILLS=1` to skip this step. Details are in [`skills/`](skills/README.md).
+The package ships skills that teach Claude Code and Codex how to delegate to zcode. Install them with one command:
+
+```sh
+zcode skills install          # both; or: zcode skills install claude | codex
+zcode skills                  # show what is installed and where
+zcode skills uninstall        # remove them
+```
+
+The Claude Code skill goes to `~/.claude/skills/zcode` and the Codex skill to `${CODEX_HOME:-~/.codex}/skills/zcode`. The package runs no install scripts. Details are in [`skills/`](skills/README.md).
 
 &nbsp;
 

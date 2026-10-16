@@ -15,11 +15,11 @@ const DOCS = [
   'skills/claude-code/zcode/SKILL.md',
   'skills/codex/zcode/SKILL.md',
 ];
-const NOT_ZCODE_FLAGS = new Set(['--test-concurrency', '--ignore-scripts']); // npm/node flags quoted in docs
+const NOT_ZCODE_FLAGS = new Set(['--test-concurrency']); // npm/node flags quoted in docs
 
 test('docs only mention flags and commands the CLI accepts', () => {
   const known = new Set(USAGE.match(/--[a-z][a-z-]*/g));
-  const commands = new Set(['task', 'run', 'agent', 'resume', 'status', 'wait', 'cancel', 'login', 'doctor', 'list']);
+  const commands = new Set(['task', 'run', 'agent', 'resume', 'status', 'wait', 'cancel', 'login', 'doctor', 'skills', 'list']);
   for (const rel of DOCS) {
     const text = fs.readFileSync(path.join(root, rel), 'utf8');
     for (const flag of new Set(text.match(/(?<![\w-])--[a-z][a-z-]*/g) || [])) {
