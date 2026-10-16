@@ -15,7 +15,7 @@ const DOCS = [
   'skills/claude-code/zcode/SKILL.md',
   'skills/codex/zcode/SKILL.md',
 ];
-const NOT_ZCODE_FLAGS = new Set(['--test-concurrency']); // npm/node flags quoted in docs
+const NOT_ZCODE_FLAGS = new Set(['--test-concurrency', '--ignore-scripts']); // npm/node flags quoted in docs
 
 test('docs only mention flags and commands the CLI accepts', () => {
   const known = new Set(USAGE.match(/--[a-z][a-z-]*/g));
