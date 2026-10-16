@@ -1,11 +1,11 @@
 ---
 name: zcode
-description: Delegate scoped implementation work to the zcode CLI (GLM-5.3 executor, vision-capable, has Playwright) and consume its compact verified handback. Use when you are orchestrating: you make the product, design and logic decisions once, then zcode implements, tests, visually verifies and repairs — in one session with subagent units, several parallel sessions, or a dependency plan — while you spend tokens only on decisions and exceptions.
+description: Delegate scoped implementation work to the zcode CLI (GLM-5.3-Flash executor: sees images, has Playwright; an independent vision verifier judges UI) and consume its compact verified handback. Use when you are orchestrating: you make the product, design and logic decisions once, then zcode implements, tests, visually verifies and repairs — in one session with subagent units, several parallel sessions, or a dependency plan — while you spend tokens only on decisions and exceptions.
 ---
 
 # Operating zcode as an executor
 
-zcode is a CLI execution engine. You decide; it builds. It implements a scoped task in its own session, runs your checks itself, screenshots and judges UI with its own vision when you ask, repairs failures within a budget, and returns a small structured handback.
+zcode is a CLI execution engine. You decide; it builds. It implements a scoped task in its own session, runs your checks itself, has a fresh, independent vision verifier screenshot and judge UI when you ask, repairs failures within a budget, and returns a small structured handback.
 
 **The point is token economy.** Your tokens go to decisions and exceptions. Everything mechanical — writing code, running builds and tests, reading diffs, looking at screenshots, fixing small failures — is zcode's. If you are doing any of that after dispatch, you are paying twice.
 
@@ -16,7 +16,7 @@ Check readiness once per machine: `zcode doctor` (exit 3 → `zcode login`; exit
 1. **Read** the codebase as much as you need to plan. This is the one phase where reading files is expected.
 2. **Decide** everything a user could see or a system depends on (checklists below). Write the decisions down once, as decisions — a file such as `docs/decisions.md` that sessions receive with `--decisions @file`.
 3. **Shape** the work: one session with units, several sessions, or a plan (next section).
-4. **Preflight** (optional, recommended for anything large or ambiguous): `--preflight` makes zcode list every question it would otherwise guess. Answer them all in one edit to the decisions file.
+4. **Preflight** (optional): `--preflight` makes zcode list every question it would otherwise guess; answer them all in one edit to the decisions file. It costs you a round trip, so use it only when your decisions have known gaps or the work is large and novel; skip it when the checklists below are fully covered.
 5. **Dispatch and wait** with `--detach` + `zcode wait`, or `zcode plan run` + `zcode plan wait`.
 6. **Handle exceptions only.** `completed` → move on. Anything else → read only what the brief shows, answer or adjust in one line with `zcode resume`.
 
@@ -30,7 +30,7 @@ The executor implements binding decisions exactly and is told not to invent anyt
 
 **Boundaries:** what the executor may choose freely (internal names, file structure, helpers) and what it must ask about.
 
-Write decisions as statements, not wishes: "Reveal: opacity 0→1 and translateY 16px→0, 400 ms, cubic-bezier(.2,.7,.2,1), 60 ms stagger, at 20% visibility; reduced motion: opacity only."
+Keep the decisions file dense: tables and one-line statements, no prose, no rationale the executor doesn't need (aim for a few thousand tokens for a one-page site). Write decisions as statements, not wishes: "Reveal: opacity 0→1 and translateY 16px→0, 400 ms, cubic-bezier(.2,.7,.2,1), 60 ms stagger, at 20% visibility; reduced motion: opacity only."
 
 ## Shaping the work
 
@@ -49,7 +49,7 @@ Parallel safety is automatic: each session gets `ZCODE_PORT`, `ZCODE_OUT`, `ZCOD
 | objective | positional text | always: the outcome, not the steps |
 | decisions | `--decision "…"`, `--decisions @file` | always for anything user-visible or behavioural |
 | checks | `--check "cmd"` | always: build, typecheck, tests, lint, greps — zcode runs them itself |
-| visual | `--visual "criterion"`, `--viewport WxH`, `--serve "cmd"` | any UI work: zcode serves on $ZCODE_PORT, screenshots, judges and repairs |
+| visual | `--visual "criterion"`, `--viewport WxH`, `--serve "cmd"` | any UI work: after the build, a fresh vision verifier serves on $ZCODE_PORT, waits for animations to finish, screenshots each viewport, quotes the text it can actually see, judges each criterion (plus "all intended text is readable"), and unmet ones go back to the implementer for repair. Phrase criteria as what must be visible: "hero headline 'Your money, simplified' is fully readable at 390 and 1440" |
 | units | `--unit "name: objective [owns a,b]"` | one session should fan out to subagents |
 | owns | `--owns path/glob` | always when other sessions may run in the same repo |
 | touch | `--touch path` | a small edit to a shared file no running session owns |
@@ -58,7 +58,7 @@ Parallel safety is automatic: each session gets `ZCODE_PORT`, `ZCODE_OUT`, `ZCOD
 | acceptance | `--accept "…"` | criteria beyond checks and visuals |
 | everything | `--task contract.json` | keys: objective, scope, constraints, decisions, design, acceptance, checks, visual, viewports, units, files, references, context, owns, touch, limits, model, effort |
 
-Model and effort: `--model glm-5.3` for real work (`flash` for trivial edits); `--effort low|high|max` (default `max`). Other values are refused before anything starts.
+Model and effort: don't pass `--model`. Everything runs on GLM-5.3-Flash by default (it sees images): sessions, units, plans, the verifier. Use `--model glm-5.3` only when the user asks for it; it can't see images. `--effort low|high|max` (default `max`). Other values are refused before anything starts.
 
 ## Running
 
@@ -85,11 +85,13 @@ zcode plan resume <name> --session <id> "<answer>"  # answer one blocked session
 
 Session ids are global and permanent: give every new run a fresh prefix (`wc3-scaffold`, …) so `plan check` passes first time. A task session may run 2 h by default; a big session (a whole page, a whole flow) can set `"limits": {"timeoutMs": 10800000}`. If one still times out, `zcode plan resume <name> "continue"` picks up from the files it already wrote.
 
+While sessions run, the user can watch them with `zcode watch` (live phase, last tool, model requests, `STALLED?` after 8 idle minutes); you never run it. `wait` timeout lines carry `idleMs`/`stalled`: a stalled session is the one case to `cancel` + `resume` early.
+
 Real tasks outlast a single shell call; always wait in bounded slices. zcode needs network access (the GLM API) and write access to `~/.zcode-cli` and the target repo: in a sandboxed Codex session, if a command fails with a sandbox or network error, re-run the same command with escalated permissions instead of changing it.
 
 ## Reading the brief
 
-`--json` prints one compact line: `status`, `summary`, `files`, failing `checks` with tails (`checksPassed` counts the rest), `questions`, `issues`, `unresolved`, `scopeViolations`, `touched`, the first `decisions` (`decisionsMore` counts the rest), unmet `visual` (`visualMet` is "met/total"), `units`, and `result` (path to the full record). Read it straight from the command output; don't pipe it through jq, python or tail.
+`--json` prints one compact line: `status`, `summary`, `files`, failing `checks` with tails (`checksPassed` counts the rest), `questions`, `issues`, `unresolved`, `scopeViolations`, `touched`, the first `decisions` (`decisionsMore` counts the rest), unmet `visual` with what the verifier actually `seen` (`visualMet` is "met/total"), `units`, and `result` (path to the full record). Read it straight from the command output; don't pipe it through jq, python or tail.
 
 | status | exit | do |
 |---|---|---|
@@ -115,7 +117,7 @@ You read the empty repo, decide the design system, copy, motion, form logic and 
 ```json
 {
   "decisions": ["@docs/decisions.md"],
-  "model": "glm-5.3", "effort": "high",
+  "effort": "high",
   "sessions": [
     {"id": "scaffold", "owns": ["package.json", "package-lock.json", "index.html", "*.config.*", "tsconfig*.json", "src/app/**", "src/styles/**", "src/components/**", "e2e/smoke.spec.ts", ".gitignore"],
      "objective": "Vite + React + TS scaffold, tokens, shared shell, stubs for src/landing and src/apply; dev/preview/e2e honour ZCODE_PORT and ZCODE_OUT",
