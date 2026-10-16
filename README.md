@@ -109,7 +109,7 @@ Flags cover the common fields. For richer handoffs, pass `--task contract.json`,
   "objective": "Implement page 2 (Team) per the design spec",
   "scope": ["Team page route and its components"],
   "constraints": ["No new dependencies", "Keep existing routing untouched"],
-  "design": ["Grid of 3 columns ≥1024px, 1 column below", "Use tokens from src/theme.ts only"],
+  "decisions": ["Grid of 3 columns ≥1024px, 1 column below", "Use tokens from src/theme.ts only"],
   "acceptance": ["Every member card shows name, role, avatar"],
   "checks": ["npm run build", "npm test -- team"],
   "files": ["src/theme.ts", "src/pages/home/index.tsx"],
@@ -122,7 +122,15 @@ Flags cover the common fields. For richer handoffs, pass `--task contract.json`,
 }
 ```
 
-`design` entries are presented to the model as binding decisions it must implement, not revisit. If the model hits a consequential product or design question the contract does not answer, it reports `blocked` with its questions instead of guessing.
+`decisions` (flags `--decision "…"`, repeatable, and `--decisions @file`; `design` is an alias) are presented to the model as binding decisions it must implement, not revisit. `@file` entries inside contract `decisions`/`context` lists are inlined (relative to the contract file). If something user-visible or behavioural is left open, the executor does not guess: when it blocks the work it reports `blocked` with a structured question `{"q", "options": [...], "recommend"}` (plain strings still work); when it does not block, it takes the most conservative choice and lists it in the handback `decisions: [{what, why}]`, which the brief carries so the orchestrator can overrule it.
+
+A file passed with `--file` and also inlined with `--context @file` reaches the executor once (as context); identical context and acceptance entries are deduped.
+
+**Preflight.** `--preflight` runs a read-only turn over the same contract: the executor lists every open question it would otherwise guess and makes no edits; zcode runs no checks. The result is `blocked` with `questions`, or `completed` with summary `no open questions`; any changed file fails it (`preflight_wrote`). The session is recorded as a preflight; `zcode resume <id> "<answers>"` then switches it to execution: the answers plus the full task protocol go to the executor, and checks and visual verification run as usual.
+
+**Units.** `--unit "name: objective [owns a,b]"` (repeatable; contract `units: [{name, objective, owns?}]`) makes the executor dispatch each unit to its own subagent inside this one session, in parallel where independent, then integrate and verify the whole. Unit `owns` must lie within the session's `--owns` and be disjoint from each other (exit 2 otherwise). The handback `units: [{name, status, note}]` is listed under `notVerified` as executor claims; zcode's checks still verify the integrated result.
+
+**Visual verification.** `--visual "criterion"` (repeatable; contract `visual`), `--viewport WxH` (repeatable, default `390x844` and `1440x900`; contract `viewports`) and `--serve "cmd"` (contract `serve`; must honour `$ZCODE_PORT`, default: the executor reads `package.json`) have the executor serve the app on `$ZCODE_PORT`, capture Playwright screenshots into `$ZCODE_OUT/shots` at each viewport, look at them, fix and re-capture, and report `visual: [{criterion, viewport, met, note, shot}]`. zcode runs no pixel check: results are executor judgement (`notVerified`). Unmet criteria spend the repair budget like failing checks (one combined repair turn when both occur); still unmet afterwards, the result is `partial` with the issue `visual criteria unmet: …`. Without `--visual` nothing changes.
 
 ### Status: what a result means
 
@@ -244,7 +252,11 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `--touch` | task | | repeatable; minimal edits outside `--owns`, reported as `touched` |
 | `--allow-overlap` | run, task, agent | off | start despite overlapping ownership |
 | `--task` | task | | JSON contract, markdown brief, or `-` |
-| `--accept`, `--check`, `--file`, `--context` | task | | repeatable; `--context @file` reads a file |
+| `--accept`, `--check`, `--file`, `--context` | task | | repeatable; `--context @file` reads a file (a `--file` also inlined this way is listed once) |
+| `--decision`, `--decisions` | task | | repeatable binding decisions; `--decisions @file` reads a file |
+| `--preflight` | task | off | read-only turn that returns the open questions; `resume <id> "<answers>"` then executes |
+| `--unit` | task | | repeatable `"name: objective [owns a,b]"`; one subagent per unit |
+| `--visual`, `--viewport`, `--serve` | task | viewports `390x844`, `1440x900` | executor screenshots the app with Playwright and judges each criterion |
 | `--max-repairs` | task, resume | `2` | repair turns after failing checks |
 | `--check-timeout-ms` | task, resume | `300000` | per check; checks get `CI=1` when unset |
 | `--model` | all turns | `glm-5.3-flash` | `glm-5.3` plus aliases `5.3`, `53`, `flash`, `5.3-flash`, `53f` |

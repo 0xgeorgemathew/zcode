@@ -908,3 +908,57 @@ unsupported) but are refused for both models.
   violations. `acquireLease({touch})` refuses (exit 7, message in the owns
   style) when a live lease overlaps a touch pattern; leases record `touch`
   but it is never compared against other sessions' ownership.
+
+### 18.4 Decisions stay with the orchestrator (phase 4)
+
+- `lib/taskspec.js` `buildContract({base, baseDir, objective, additions, cwd})`
+  is the one place a contract is assembled from its sources (used by
+  `zcode task`; `scripts/measure.js` builds its prompt through it, and plan
+  files reuse it). It inlines `@file` entries of `context` and `decisions`
+  (flags: relative to the process cwd; contract JSON: relative to the contract
+  file's directory), drops a `files` entry that resolves to an inlined file,
+  runs `normalizeContract` (identical `context`/`acceptance`/`files`/
+  `decisions` entries deduped) and validates units. It throws
+  `ContractError`; `exec.js` turns that into a one-line exit 2.
+- Contract keys added: `decisions`, `units`, `visual`, `viewports`, `serve`.
+  `decisions` and the older `design` render in one section, "Binding
+  decisions (made by the orchestrator: implement exactly)".
+- Protocol: a "do not guess" bullet (blocked + structured question, or the
+  conservative choice listed in `decisions`) and handback `decisions:
+  [{what, why}]`. A question is a string or `{q, options?, recommend?}`
+  (`parseHandback` keeps both shapes; `contract.questionText` renders them).
+  These always-on lines are budgeted separately in `scripts/measure.js`
+  (`PROTOCOL_ALLOWANCE`, 400 bytes); the measure gate "bare prompt <= baseline"
+  therefore became "<= baseline + 400".
+- `--preflight` (`inv.preflight`, setting + session record `preflight`): the
+  prompt gets a read-only "Preflight" section and no checks section; no lease
+  is taken; after the handback the loop stops (no checks). `deriveStatus`
+  yields `blocked` (status blocked or any question), `completed` (summary
+  forced to "no open questions") or, if any non-concurrent file changed,
+  `failed` with `error.kind = preflight_wrote`. Resuming a session whose
+  settings say preflight clears the flag (settings + record) and sends the
+  full task prompt plus an "Answers to your preflight questions" section.
+
+### 18.5 Units (phase 5)
+
+`--unit "name: objective [owns a,b]"` / contract `units` -> `contract.units`
+(`parseUnit`, `normalizeUnits`: unique names, objective required). Owns are
+validated in `taskspec.validateUnits` after normalising like `--owns`:
+inside the session owns (`isOwned`) and pairwise disjoint (`ownsOverlap`,
+units without owns are not compared); violations exit 2. The "Units" prompt
+section tells the executor to dispatch one subagent per unit. Handback
+`units` goes to the result/brief and, as executor claims, into `notVerified`.
+
+### 18.6 Visual verification (phase 6)
+
+`--visual` / `--viewport` / `--serve` -> contract `visual`, `viewports`,
+`serve`; the "Visual verification" section renders only when `visual` is
+non-empty (viewports default to `390x844`, `1440x900`; screenshots go to
+`$ZCODE_OUT/shots`, the server to `$ZCODE_PORT`). The executor loop now
+continues past the checks stage whenever checks or visual criteria exist:
+`unmetVisual(handback, declared)` (entries without `met: true`, or all
+criteria when `visual` is not reported) and failing checks share the repair
+budget and one combined repair prompt (`buildRepairPrompt(..., {visual})`).
+After the budget `deriveStatus` returns `partial` with `visual criteria
+unmet: ...` (failing checks still win with `failed`). The results are noted
+in `notVerified` as executor judgement; zcode does no pixel check.

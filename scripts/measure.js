@@ -20,9 +20,11 @@
 // Gates (docs/baseline.json was measured on v0.4.4, before any v0.5 change):
 //   result line  <= 20% of baseline
 //   wait timeout <= 120 bytes per pending session
-//   prompt       <= baseline bytes + PROMPT_ALLOWANCE, where the allowance is
-//                the size budget for sections that render on EVERY task prompt
-//                since v0.5 (today: "Session environment", <= 400 bytes).
+//   prompt       <= baseline bytes + the allowances for text that renders on
+//                EVERY task prompt since v0.5: "Session environment" (<= 400
+//                bytes) and the decisions protocol lines (<= 400 bytes).
+//                The prompt comes from the real CLI contract path (lib/taskspec.js),
+//                so --file X + --context @X is deduped as it is for users.
 //                The prompt is measured as the executor receives it, i.e.
 //                with the session environment section. Optional sections
 //                (decisions, units, visual, touch) are not part of the
@@ -37,6 +39,9 @@ const { setupFake, handback } = require('../test/helpers/fake.js');
 const repoRoot = path.resolve(__dirname, '..');
 const BIN = path.join(repoRoot, 'bin', 'zcode.js');
 const PROMPT_ALLOWANCE = 400;
+// v0.5 protocol additions that render on every task prompt: the "do not guess,
+// report decisions" rule and the handback `decisions` / structured-question lines.
+const PROTOCOL_ALLOWANCE = 400;
 const WAIT_SESSIONS = 2;
 const WAIT_BYTES_PER_SESSION = 120;
 const RUNS = 3;
@@ -126,29 +131,38 @@ async function measureWait(fake) {
 
 function measurePrompt() {
   const { buildTaskPrompt } = require('../lib/contract.js');
+  const { buildContract } = require('../lib/taskspec.js');
   const spec = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8').slice(0, 3000);
-  const specFile = 'README.md'; // --file README.md and --context @README.md: the same file twice
-  const contract = {
-    objective: 'Implement the pricing page from the spec.',
-    scope: ['pricing page only'], constraints: ['no new dependencies'], design: [],
-    acceptance: ['page renders three plans', 'CTA links to /signup'],
-    checks: ['npm test', 'npm run build'],
-    files: [specFile, 'src/app.js'],
-    references: [], context: [spec], owns: ['src/pricing/**'], limits: {}, model: null, effort: null,
-  };
-  const ownsDisplay = ['src/pricing/**'];
-  const bare = buildTaskPrompt(contract, { ownsDisplay });
-  const sample = {
-    id: 'zc-1a2b3c4d', port: 41234,
-    out: '/Users/dev/projects/site/.zcode/out/zc-1a2b3c4d', tmp: '/Users/dev/.zcode-cli/sessions/zc-1a2b3c4d/tmp',
-  };
-  let full = bare;
+  // The contract the way the CLI builds it: --file spec.md and --context @spec.md
+  // name the same file, so it must reach the executor once (the real dedupe path).
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zcode-measure-'));
   try {
-    full = buildTaskPrompt(contract, { ownsDisplay, session: sample });
-  } catch {
-    /* pre-0.5 contract.js ignores the option */
+    fs.writeFileSync(path.join(dir, 'README.md'), spec);
+    const contract = buildContract({
+      cwd: dir,
+      objective: 'Implement the pricing page from the spec.',
+      base: { scope: ['pricing page only'], constraints: ['no new dependencies'] },
+      additions: {
+        acceptance: ['page renders three plans', 'CTA links to /signup'],
+        checks: ['npm test', 'npm run build'],
+        files: [path.join(dir, 'README.md'), 'src/app.js'],
+        context: [`@${path.join(dir, 'README.md')}`],
+        owns: ['src/pricing/**'],
+      },
+    });
+    // Display the file the way a user would have typed it.
+    contract.files = contract.files.map((f) => path.relative(dir, path.resolve(dir, f)));
+    const ownsDisplay = ['src/pricing/**'];
+    const bare = buildTaskPrompt(contract, { ownsDisplay });
+    const sample = {
+      id: 'zc-1a2b3c4d', port: 41234,
+      out: '/Users/dev/projects/site/.zcode/out/zc-1a2b3c4d', tmp: '/Users/dev/.zcode-cli/sessions/zc-1a2b3c4d/tmp',
+    };
+    const full = buildTaskPrompt(contract, { ownsDisplay, session: sample });
+    return { promptBytes: Buffer.byteLength(bare), promptWithSessionBytes: Buffer.byteLength(full) };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  return { promptBytes: Buffer.byteLength(bare), promptWithSessionBytes: Buffer.byteLength(full) };
 }
 
 function gates(base, now) {
@@ -159,10 +173,11 @@ function gates(base, now) {
   const perSession = now.waitTimeoutBytes / now.waitSessions;
   add(`wait timeout <= ${WAIT_BYTES_PER_SESSION} B/session`, perSession <= WAIT_BYTES_PER_SESSION,
     `${now.waitTimeoutBytes} B for ${now.waitSessions} sessions (${perSession.toFixed(0)} B each; baseline ${base.waitTimeoutBytes} B)`);
-  add('prompt (bare contract) <= baseline', now.promptBytes <= base.promptBytes, `${now.promptBytes} B vs ${base.promptBytes} B`);
-  add(`prompt as sent <= baseline + ${PROMPT_ALLOWANCE} B (always-on sections)`,
-    now.promptWithSessionBytes <= base.promptBytes + PROMPT_ALLOWANCE,
-    `${now.promptWithSessionBytes} B vs ${base.promptBytes} B + ${PROMPT_ALLOWANCE}`);
+  add(`prompt (bare contract) <= baseline + ${PROTOCOL_ALLOWANCE} B (protocol additions)`, now.promptBytes <= base.promptBytes + PROTOCOL_ALLOWANCE,
+    `${now.promptBytes} B vs ${base.promptBytes} B + ${PROTOCOL_ALLOWANCE}`);
+  add(`prompt as sent <= baseline + ${PROMPT_ALLOWANCE + PROTOCOL_ALLOWANCE} B (always-on sections)`,
+    now.promptWithSessionBytes <= base.promptBytes + PROMPT_ALLOWANCE + PROTOCOL_ALLOWANCE,
+    `${now.promptWithSessionBytes} B vs ${base.promptBytes} B + ${PROMPT_ALLOWANCE + PROTOCOL_ALLOWANCE}`);
   add('wall time <= baseline +5% (+300 ms)', now.wallMs <= base.wallMs * 1.05 + 300, `${now.wallMs} ms vs ${base.wallMs} ms`);
   return checks;
 }

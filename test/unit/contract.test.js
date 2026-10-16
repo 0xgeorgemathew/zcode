@@ -34,7 +34,7 @@ test('normalizeContract: rejects typos, bad limits and a missing objective', () 
 test('buildTaskPrompt: only populated sections, design is binding, ownership + checks spelled out', () => {
   const c = normalizeContract({ objective: 'O', design: ['Use the supplied tokens'] }, { checks: ['npm run build'], owns: ['src/a/**'] });
   const p = buildTaskPrompt(c);
-  assert.match(p, /implement them exactly; do not change them\)\n- Use the supplied tokens/);
+  assert.match(p, /implement exactly\)\n- Use the supplied tokens/);
   assert.match(p, /ONLY these paths[\s\S]*- src\/a\/\*\*/);
   assert.match(p, /`npm run build`/);
   assert.doesNotMatch(p, /## Scope/);

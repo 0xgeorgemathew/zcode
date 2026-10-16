@@ -36,8 +36,22 @@ task contract (task only):
   --touch <path|glob>   repeatable: minimal edits allowed outside --owns; reported
                         as "touched", not a scope violation. Refused (exit 7) if a
                         running session owns a matching path; reserves nothing
-  --file <path>         repeatable relevant file to read first
-  --context <text|@f>   repeatable extra context (design decisions, references)
+  --file <path>         repeatable relevant file to read first (a file also given
+                        as --context @file is inlined once, not listed twice)
+  --context <text|@f>   repeatable extra context (references, background)
+  --decision <text>     repeatable binding decision the orchestrator made (the
+                        executor implements it exactly and must not guess others)
+  --decisions <@f|text> binding decisions from a file (same list as --decision)
+  --preflight           read-only turn: the executor lists the open questions it
+                        would otherwise guess (blocked + questions, or completed
+                        "no open questions"); no edits, no checks. Then
+                        zcode resume <id> "<answers>" executes the task
+  --unit "n: goal [owns a,b]"  repeatable: one subagent per unit inside this
+                        session; owns must lie within --owns and be disjoint
+  --visual <criterion>  repeatable: the executor serves the app on $ZCODE_PORT,
+                        screenshots it with Playwright and judges each criterion
+  --viewport <WxH>      repeatable viewport for --visual (default 390x844, 1440x900)
+  --serve <cmd>         command that serves the app for --visual (honours $ZCODE_PORT)
   --max-repairs <n>     repair turns after failing checks (default 2)
   --check-timeout-ms <n> per-check timeout (default 300000)
 
@@ -109,9 +123,9 @@ function parseMcpSpec(value) {
 }
 
 const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', 'skills', 'result', '__exec']);
-const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'touch', 'maxRepairs', 'checkTimeoutMs']);
+const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'touch', 'maxRepairs', 'checkTimeoutMs', 'decisions', 'units', 'visual', 'viewports', 'serve', 'preflight']);
 const FULL_COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'wait', 'result', '__exec']);
-const START_ONLY = new Set(['id', 'label', 'owns', 'touch', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
+const START_ONLY = new Set(['id', 'label', 'owns', 'touch', 'preflight', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
 
 function parseArgv(argv) {
   const out = {
@@ -138,6 +152,12 @@ function parseArgv(argv) {
       context: [],
       owns: [],
       touch: [],
+      decisions: [],
+      units: [],
+      visual: [],
+      viewports: [],
+      serve: undefined,
+      preflight: false,
       allowOverlap: false,
       maxRepairs: undefined,
       checkTimeoutMs: undefined,
@@ -159,11 +179,13 @@ function parseArgv(argv) {
     ['--model', 'model'], ['--effort', 'effort'], ['--cwd', 'cwd'], ['--profile', 'profile'],
     ['--timeout-ms', 'timeoutMs'], ['-p', 'prompt'], ['--prompt', 'prompt'], ['--session', 'session'],
     ['--id', 'id'], ['--label', 'label'], ['--task', 'task'], ['--max-repairs', 'maxRepairs'],
-    ['--check-timeout-ms', 'checkTimeoutMs'],
+    ['--check-timeout-ms', 'checkTimeoutMs'], ['--serve', 'serve'],
   ]);
   const listFlags = new Map([
     ['--mcp', 'mcpSpecs'], ['--skills', 'skillsDirs'], ['--accept', 'accept'], ['--check', 'check'],
     ['--file', 'file'], ['--context', 'context'], ['--owns', 'owns'], ['--touch', 'touch'],
+    ['--decision', 'decisions'], ['--decisions', 'decisions'], ['--unit', 'units'], ['--visual', 'visual'],
+    ['--viewport', 'viewports'],
   ]);
   const boolFlags = new Map([
     ['--json', ['json', true]], ['--fresh', ['fresh', true]], ['--mcp-inherit', ['mcpInherit', true]],
@@ -171,7 +193,7 @@ function parseArgv(argv) {
     ['--include-reasoning', ['includeReasoning', true]], ['--quiet', ['quiet', true]],
     ['--detach', ['detach', true]], ['--allow-overlap', ['allowOverlap', true]],
     ['--thinking', ['thinking', true]], ['--no-thinking', ['thinking', false]], ['--stream', ['stream', true]],
-    ['--full', ['full', true]], ['--any', ['any', true]],
+    ['--full', ['full', true]], ['--any', ['any', true]], ['--preflight', ['preflight', true]],
   ]);
   const numeric = (flag, value, { min = 1 } = {}) => {
     const n = Number(value);
@@ -192,8 +214,6 @@ function parseArgv(argv) {
       else if (key === 'skillsDirs') {
         if (!isDirectory(value)) fail(2, `--skills requires an existing directory, got "${value}".`);
         out.flags.skillsDirs.push(value);
-      } else if (key === 'context') {
-        out.flags.context.push(value.startsWith('@') ? readFileOrFail(value.slice(1), '--context') : value);
       } else if (listFlags.has(arg)) out.flags[key].push(value);
       else if (!value.trim()) fail(2, `${arg} requires a non-empty value.`);
       else out.flags[key] = value.trim();
@@ -286,7 +306,8 @@ function suggestFlag(arg, known) {
 }
 
 function flagName(key) {
-  return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`).replace(/^mcp-specs$/, 'mcp').replace(/^skills-dirs$/, 'skills');
+  return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`).replace(/^mcp-specs$/, 'mcp').replace(/^skills-dirs$/, 'skills')
+    .replace(/^(unit|viewport)s$/, '$1');
 }
 
 function isDirectory(p) {
