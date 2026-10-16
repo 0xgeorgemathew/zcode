@@ -36,7 +36,7 @@ zcode task --check "npm test" "Fix the off-by-one in src/paginate.ts"
 
 The CLI needs node 20 or later. The engine child runs best on node 26. zcode also needs the ZCode engine, which today ships inside the ZCode desktop app; zcode finds it automatically.
 
-Skills that teach Claude Code and Codex to delegate to zcode are in [`skills/`](skills/README.md).
+Installing the package also installs the Claude Code skill to `~/.claude/skills/zcode` and the Codex skill to `${CODEX_HOME:-~/.codex}/skills/zcode`. These skills teach the orchestrator how to delegate to zcode. Set `ZCODE_SKIP_SKILLS=1` to skip this step. Details are in [`skills/`](skills/README.md).
 
 &nbsp;
 

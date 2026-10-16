@@ -9,6 +9,8 @@ These skills teach an orchestrating agent how to delegate work to zcode, run ses
 
 ## Install
 
+`npm install -g @0xgeorgemathew/zcode` installs both skills for you. Its postinstall step copies the Claude Code skill to `~/.claude/skills/zcode` and the Codex skill to `${CODEX_HOME:-~/.codex}/skills/zcode`, replacing any earlier copy of the zcode skill only. Set `ZCODE_SKIP_SKILLS=1` to skip it. If npm runs with `--ignore-scripts`, nothing is copied; use the manual steps below.
+
 Run these from a checkout of this repo, or from the installed package (`$(npm root -g)/@0xgeorgemathew/zcode`), which ships `skills/`.
 
 **Claude Code.** Personal skills, available in every project:
