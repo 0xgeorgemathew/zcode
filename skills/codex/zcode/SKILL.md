@@ -1,114 +1,142 @@
 ---
 name: zcode
-description: Delegate scoped implementation work to the zcode CLI (GLM-5.3 executor) and consume its verified handback. Use when you are orchestrating and want a page, component, fix or other bounded unit implemented and checked by an independent executor session — alone or several in parallel — while you keep product, design and planning decisions.
+description: Delegate scoped implementation work to the zcode CLI (GLM-5.3 executor, vision-capable, has Playwright) and consume its compact verified handback. Use when you are orchestrating: you make the product, design and logic decisions once, then zcode implements, tests, visually verifies and repairs — in one session with subagent units, several parallel sessions, or a dependency plan — while you spend tokens only on decisions and exceptions.
 ---
 
 # Operating zcode as an executor
 
-zcode is a CLI execution engine. You hand it a scoped task; it implements the task in its own session, runs your acceptance checks itself, repairs failures within a budget, and returns a structured handback. You stay the orchestrator. You decide what to build and how it should look, how to split the work, when to run sessions in parallel, and when to review. zcode decides routine implementation details within the scope you give it.
+zcode is a CLI execution engine. You decide; it builds. It implements a scoped task in its own session, runs your checks itself, screenshots and judges UI with its own vision when you ask, repairs failures within a budget, and returns a small structured handback.
 
-Check it is ready once per machine: `zcode doctor` (exit 3 means no key, so run `zcode login`; exit 4 means the engine is missing).
+**The point is token economy.** Your tokens go to decisions and exceptions. Everything mechanical — writing code, running builds and tests, reading diffs, looking at screenshots, fixing small failures — is zcode's. If you are doing any of that after dispatch, you are paying twice.
 
-## When to use it
+Check readiness once per machine: `zcode doctor` (exit 3 → `zcode login`; exit 4 → engine missing). Don't run `--help`: everything you need is here.
 
-- Use it for bounded implementation work with a clear outcome: one page, a few components, a bug fix, a refactor of a known area, a test suite for a module.
-- Don't use it for product or design decisions, open-ended exploration, or work you can't describe a finished state for. Decide those yourself first, then delegate the implementation.
-- Size each session so you could review its result in one sitting. Several small sessions beat one huge one, because each returns its own evidence.
+## The workflow
 
-## Writing the handoff
+1. **Read** the codebase as much as you need to plan. This is the one phase where reading files is expected.
+2. **Decide** everything a user could see or a system depends on (checklists below). Write the decisions down once, as decisions — a file such as `docs/decisions.md` that sessions receive with `--decisions @file`.
+3. **Shape** the work: one session with units, several sessions, or a plan (next section).
+4. **Preflight** (optional, recommended for anything large or ambiguous): `--preflight` makes zcode list every question it would otherwise guess. Answer them all in one edit to the decisions file.
+5. **Dispatch and wait** with `--detach` + `zcode wait`, or `zcode plan run` + `zcode plan wait`.
+6. **Handle exceptions only.** `completed` → move on. Anything else → read only what the brief shows, answer or adjust in one line with `zcode resume`.
 
-Only the objective is required. Add what the executor cannot infer:
+## Deciding: leave nothing open-ended
+
+The executor implements binding decisions exactly and is told not to invent anything user-visible or behavioural. Gaps either block it (a round trip for you) or get the most conservative default. Close them up front.
+
+**Front end:** palette (exact values), type families and scale, spacing scale, radii, iconography/illustration style; every section's layout and hierarchy at each breakpoint you care about; exact copy; component states (hover, focus, active, disabled, loading, empty, error); motion (what moves, property, distance, duration, easing, stagger, trigger, reduced-motion behaviour); accessibility (focus order, traps, labels, contrast floor); stack and libraries; performance budget.
+
+**Back end / logic:** data shapes and storage keys; API routes, payloads, status codes and errors; validation rules (exact regexes, ranges); state machines (steps, transitions, what persists, what resets); auth and permissions; idempotency and retries; what is mocked vs real; side effects that are forbidden.
+
+**Boundaries:** what the executor may choose freely (internal names, file structure, helpers) and what it must ask about.
+
+Write decisions as statements, not wishes: "Reveal: opacity 0→1 and translateY 16px→0, 400 ms, cubic-bezier(.2,.7,.2,1), 60 ms stagger, at 20% visibility; reduced motion: opacity only."
+
+## Shaping the work
+
+Pick the cheapest shape that keeps each session finishable without you.
+
+- **One session with units** when the pieces share context (one page's sections, one module's functions). `--unit "hero: …"` per piece; zcode gives each unit its own subagent and integrates.
+- **Several sessions** when pieces are independent and own disjoint paths. Launch them `--detach` in parallel; each may have its own units.
+- **A plan** when there are dependencies (scaffold → parallel features → integration). `zcode plan run plan.json` sequences and parallelises for you; you wait once.
+
+Parallel safety is automatic: each session gets `ZCODE_PORT`, `ZCODE_OUT`, `ZCODE_TMP` and `ZCODE_SESSION_ID`. Tell the first (scaffold) session to make dev-server ports, build output dirs and test artifacts honour them. Target repos should ignore `.zcode/`.
+
+## The handoff
 
 | field | flag | give it when |
 |---|---|---|
 | objective | positional text | always: the outcome, not the steps |
-| acceptance | `--accept "…"` | you have criteria beyond "it works" |
-| checks | `--check "cmd"` | always if possible: shell commands zcode runs itself (build, tests, lint, a grep) |
-| owns | `--owns path/or/glob` | other sessions may touch the same repo |
-| files | `--file path` | specific files to read first |
-| context / design | `--context "…"` or `--context @notes.md` | design decisions, copy, references, constraints |
-| everything | `--task contract.json` | larger handoffs (keys: objective, scope, constraints, design, acceptance, checks, files, references, context, owns, limits, model, effort) |
+| decisions | `--decision "…"`, `--decisions @file` | always for anything user-visible or behavioural |
+| checks | `--check "cmd"` | always: build, typecheck, tests, lint, greps — zcode runs them itself |
+| visual | `--visual "criterion"`, `--viewport WxH`, `--serve "cmd"` | any UI work: zcode serves on $ZCODE_PORT, screenshots, judges and repairs |
+| units | `--unit "name: objective [owns a,b]"` | one session should fan out to subagents |
+| owns | `--owns path/glob` | always when other sessions may run in the same repo |
+| touch | `--touch path` | a small edit to a shared file no running session owns |
+| files | `--file path` | files to read first (don't also pass them as `--context @`) |
+| context | `--context "…"` / `--context @file` | background that isn't a decision |
+| acceptance | `--accept "…"` | criteria beyond checks and visuals |
+| everything | `--task contract.json` | keys: objective, scope, constraints, decisions, design, acceptance, checks, visual, viewports, units, files, references, context, owns, touch, limits, model, effort |
 
-Rules that keep you in charge:
+Model and effort: `--model glm-5.3` for real work (`flash` for trivial edits); `--effort low|high|max` (default `max`). Other values are refused before anything starts.
 
-- Put design decisions in `design` (JSON) or `--context`, written as decisions ("Hero uses the dark palette; CTA right-aligned"). The executor is told to implement them exactly and to report `blocked` rather than invent product or design choices.
-- Make checks mechanical and fast. A task with no `--check` can only come back `unverified`.
-- Don't ask zcode to commit, push, or deploy unless you mean it. It won't by default.
-
-## Running sessions
-
-zcode needs network access (the GLM API) and write access to `~/.zcode-cli` and the target repo. In a sandboxed Codex session, those commands may fail with sandbox or network errors. If they do, re-run the same command with escalated permissions instead of changing the command.
-
-Real tasks usually outlast a single shell call's timeout. Start them detached and wait in bounded slices:
+## Running
 
 ```sh
 zcode task --detach --id <id> --cwd <repo> [flags] "<objective>"   # prints the id, returns at once
-zcode wait <id> --timeout-ms 540000 --json --quiet                  # exit 124 = still running: wait again
+zcode wait <id…> --timeout-ms 540000 --json --quiet                # 124 = still running (one line each): wait again
+zcode wait <id…> --any --timeout-ms 540000 --json --quiet          # return on the first that finishes
+zcode resume <id> "<answer or follow-up>" --detach                 # same session, context intact
+zcode result <id> [--full]                                         # brief again, or the full record
+zcode cancel <id>
 ```
 
-Quick tasks can run in the foreground: `zcode task … --json --quiet` prints exactly one result line.
-
-- `zcode status` lists sessions. `zcode status <id> --json` shows the state (`queued|running|finished|interrupted`), phase (`starting|executing|checking|repairing|reporting`), activity, recent events, and the result once finished. Use it only when you need it. You don't have to watch progress, and nothing waits for your approval.
-- `zcode cancel <id>` stops the turn and any running check; the session is recorded as `cancelled`.
-- `zcode resume <id> "<message>"` continues the same session with its context intact. Use it to answer questions, request follow-up changes, or continue after `interrupted`, `failed`, or `partial`. It accepts `--detach`, `--model`, `--effort`, `--timeout-ms`, and `--max-repairs`. The scope (`--cwd`, `--owns`, checks) stays as it was.
-- Pick your own `--id` values (`page-1`, `fix-auth`) so you can retry safely. A start with an existing id is refused (exit 2) instead of running the work twice.
-
-## Parallel sessions
-
-- Each session has its own engine context, so nothing leaks between them.
-- Sessions in the same repo must declare disjoint `--owns`. An overlapping start is refused with exit 7, and the error names the conflicting session. Fix the split, wait, or give the session its own `git worktree` and point `--cwd` at it.
-- After the work, each handback lists changed files. Anything outside the session's ownership appears in `scopeViolations` and makes the result `partial`.
-- You integrate the results. zcode doesn't coordinate sessions with each other.
-
-## Reading the handback
-
-The result (`--json`: one `{"type":"result"}` line) has `status`, `summary`, `changes.files`, `checks` (zcode's own runs, with output tails), `issues`, `questions`, `unresolved`, `notVerified`, `scopeViolations`, `subagents`, and `handback` (the executor's own claims).
-
-| status | exit | what it means | what you do |
-|---|---|---|---|
-| `completed` | 0 | zcode's checks passed, executor reports done, scope respected | review on your own schedule; integrate |
-| `unverified` | 9 | executor says done, but there were no checks (or no usable handback) | verify yourself, or resume with a check added to the message |
-| `partial` | 8 | work remains, a criterion is unmet, or files changed outside scope | read `issues`/`unresolved`/`scopeViolations`; resume or re-scope |
-| `blocked` | 10 | needs you: see `questions` | decide, then `zcode resume <id> "<answer>"` |
-| `failed` | 8 / 5 / 124 | `error.kind`: `checks_failed` (still failing after repairs), turn/engine error, or `timeout` | read `checks[].output` / `error`; resume with guidance or re-scope |
-| `cancelled` | 130 | stopped | resume if wanted |
-
-Trust `status`, `checks`, and `changes`. They come from what zcode observed. Treat `handback` and `summary` as the executor's report. A subagent's `success` only means it returned. zcode already verified the integrated result through your checks, so you don't need to review per subagent or per step.
-
-## Example: small task
+Plans:
 
 ```sh
-zcode task --id fix-typo --cwd ~/site --owns README.md \
-  --check "grep -q '^# Acme Docs' README.md" \
-  "Fix the misspelled top-level heading in README.md (should read 'Acme Docs')" --json --quiet
+zcode plan check plan.json
+zcode plan run plan.json --detach [--preflight]
+zcode plan wait <name> --timeout-ms 540000 --json   # one summary line per session; details only for non-completed
+zcode plan resume <name> ["<message>"]              # resume failed/partial, relaunch skipped
+zcode plan resume <name> --session <id> "<answer>"  # answer one blocked session
 ```
 
-Exit 0 means it's done. The result line shows the single changed file and the passing check.
+`plan.json`: `{"cwd"?, "decisions"?, "context"?, "files"?, "model"?, "effort"?, "sessions": [{"id", "after"?: [ids], ...contract keys}]}`. Top-level decisions/context/files go to every session; `@` entries are files relative to the plan. The plan name is the file basename (or `--id`). Sessions that can run at the same time must own disjoint paths; `plan check` enforces it. When an upstream session ends non-completed, its dependants are `skipped` until you `plan resume`.
 
-## Example: Page 1 and Page 2 in parallel
+Real tasks outlast a single shell call; always wait in bounded slices. zcode needs network access (the GLM API) and write access to `~/.zcode-cli` and the target repo: in a sandboxed Codex session, if a command fails with a sandbox or network error, re-run the same command with escalated permissions instead of changing it.
 
-You've already decided the design. Each page gets its own session, its own scope, and its own checks:
+## Reading the brief
 
-```sh
-zcode task --detach --id page-1 --cwd ~/site --label "Home page" \
-  --owns src/pages/home/ --file src/theme.ts \
-  --context @specs/home.md \
-  --accept "Hero, three feature cards, footer CTA as specified" \
-  --check "npm run build" --check "npm test -- home" \
-  "Implement the Home page exactly as specified in the context"
+`--json` prints one compact line: `status`, `summary`, `files`, failing check tails, `questions`, `issues`, `unresolved`, `scopeViolations`, `touched`, `decisions`, `visual`, `units`, and `result` (path to the full record).
 
-zcode task --detach --id page-2 --cwd ~/site --label "Pricing page" \
-  --owns src/pages/pricing/ --file src/theme.ts \
-  --context @specs/pricing.md \
-  --accept "Three plan cards, middle one highlighted; monthly/yearly toggle" \
-  --check "npm run build" --check "npm test -- pricing" \
-  "Implement the Pricing page exactly as specified in the context"
+| status | exit | do |
+|---|---|---|
+| `completed` | 0 | nothing. Skim `decisions` (the executor's own in-scope choices); veto with `resume` only if one is wrong |
+| `blocked` | 10 | answer `questions` (they come with options and a recommendation) via `zcode resume <id> "<answer>"`, and add the answer to your decisions file |
+| `partial` | 8 | read `issues` / `unresolved` / unmet `visual` / `scopeViolations`; resume with one-line guidance or re-scope |
+| `failed` | 8/5/124 | read the failing check `tail` or `error`; resume with guidance |
+| `unverified` | 9 | you forgot checks: resume with a check added |
+| `cancelled` | 130 | resume if wanted |
 
-zcode wait page-1 page-2 --timeout-ms 540000 --json --quiet   # repeat while exit is 124
+## Hard rules after dispatch
+
+- Don't open files a `completed` session changed. Don't re-run checks it ran. Don't look at its screenshots.
+- Don't poll `status`; use `wait`.
+- Don't fix code yourself; `resume` the session with one line.
+- Need to know something about the result? `zcode result <id> --full` first; read code only as a last resort.
+- Don't ask zcode to commit, push, publish or deploy unless the user asked; when they did, make it its own final session gated on everything else being `completed`.
+
+## Example: a marketing one-pager with an application form
+
+You read the empty repo, decide the design system, copy, motion, form logic and demo constraints, and write `docs/decisions.md`. Then `plan.json`:
+
+```json
+{
+  "decisions": ["@docs/decisions.md"],
+  "model": "glm-5.3", "effort": "high",
+  "sessions": [
+    {"id": "scaffold", "owns": ["package.json", "package-lock.json", "index.html", "*.config.*", "tsconfig*.json", "src/app/**", "src/styles/**", "src/components/**", "e2e/smoke.spec.ts", ".gitignore"],
+     "objective": "Vite + React + TS scaffold, tokens, shared shell, stubs for src/landing and src/apply; dev/preview/e2e honour ZCODE_PORT and ZCODE_OUT",
+     "checks": ["npm run build", "npm test", "npm run e2e"]},
+    {"id": "landing", "after": ["scaffold"], "owns": ["src/landing/**", "e2e/landing.spec.ts"],
+     "objective": "All landing sections per the decisions",
+     "units": ["hero: …", "highlights: …", "products: …", "how: …", "charges: …", "faqs: …", "about-cta: …"],
+     "checks": ["npm run build", "npx playwright test e2e/landing.spec.ts"],
+     "visual": ["hero headline fits on two lines at 390px", "product cards align on one row at 1440px", "no text overlaps any circle motif"]},
+    {"id": "apply", "after": ["scaffold"], "owns": ["src/apply/**", "e2e/apply.spec.ts"],
+     "objective": "Application dialog: demo OTP, four steps, local draft, thank-you",
+     "checks": ["npm run build", "npm test -- apply", "npx playwright test e2e/apply.spec.ts"],
+     "visual": ["OTP code is visible on screen after entering a number", "step indicator shows the current step at 390px"]},
+    {"id": "integration", "after": ["landing", "apply"], "owns": ["src/App.tsx", "e2e/**"],
+     "objective": "Wire everything, full-page pass, fix integration issues",
+     "checks": ["npm run build", "npm test", "npm run e2e"],
+     "visual": ["full page at 390 and 1440 matches the decisions; motion respects reduced motion"]}
+  ]
+}
 ```
 
-If `page-2` comes back `blocked` with "Should yearly prices show the discount badge?", decide and run `zcode resume page-2 "Yes, show the 'Save 20%' badge on yearly." --detach`, then wait again. To run the pages one after another instead, start `page-2` after `page-1`'s handback. The shared `src/theme.ts` is passed with `--file` (read), not owned, so a change to it by either session would come back as a scope violation. If a page truly needs a shared change, make it yourself or give that file to exactly one session's `--owns`.
+`zcode plan check plan.json` → `zcode plan run plan.json --preflight` (read-only `<id>.pre` sessions; prints only the questions) → answer them once in the decisions file → `zcode plan run plan.json --detach` → `zcode plan wait plan --timeout-ms 540000 --json`. Your total involvement: the decisions, one answer pass, one summary.
 
 ## Exit codes
 
-0 completed · 2 usage (bad flag, contract, or duplicate id) · 3 no key · 4 no engine · 5 failed · 6 `agent` had no subagent · 7 workspace conflict / session busy · 8 partial or checks failing · 9 unverified · 10 blocked · 124 timeout (for `wait`: still running) · 130 cancelled.
+0 completed · 2 usage (bad flag, contract, plan, effort, or duplicate id) · 3 no key · 4 no engine · 5 failed · 6 `agent` had no subagent · 7 workspace conflict / session busy · 8 partial or checks failing · 9 unverified · 10 blocked · 124 timeout (for `wait`: still running) · 130 cancelled.

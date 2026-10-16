@@ -1,6 +1,6 @@
 # Orchestrator skills
 
-These skills teach an orchestrating agent how to delegate work to zcode, run sessions in parallel, and read the handbacks. Both describe the same CLI; they differ only in runtime notes (tool timeouts for Claude Code, sandbox and network escalation for Codex).
+These skills teach an orchestrating agent to make the design and logic decisions once, delegate the implementation to zcode (one session with units, parallel sessions, or a plan), and read the compact handbacks, spending its own tokens only on decisions and exceptions. Both describe the same CLI; they differ only in runtime notes (tool timeouts for Claude Code, sandbox and network escalation for Codex).
 
 | platform | skill in this repo | format |
 |---|---|---|
