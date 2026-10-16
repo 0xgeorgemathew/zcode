@@ -9,7 +9,7 @@ zcode is a CLI execution engine. You decide; it builds. It implements a scoped t
 
 **The point is token economy.** Your tokens go to decisions and exceptions. Everything mechanical — writing code, running builds and tests, reading diffs, looking at screenshots, fixing small failures — is zcode's. If you are doing any of that after dispatch, you are paying twice.
 
-Check readiness once per machine: `zcode doctor` (exit 3 → `zcode login`; exit 4 → engine missing). Don't run `--help`: everything you need is here.
+Check readiness once per machine: `zcode doctor` (exit 3 → `zcode login`; exit 4 → engine missing). Don't run `--help` or a bare `zcode status`: everything you need is here.
 
 ## The workflow
 
@@ -40,7 +40,7 @@ Pick the cheapest shape that keeps each session finishable without you.
 - **Several sessions** when pieces are independent and own disjoint paths. Launch them `--detach` in parallel; each may have its own units.
 - **A plan** when there are dependencies (scaffold → parallel features → integration). `zcode plan run plan.json` sequences and parallelises for you; you wait once.
 
-Parallel safety is automatic: each session gets `ZCODE_PORT`, `ZCODE_OUT`, `ZCODE_TMP` and `ZCODE_SESSION_ID`. Tell the first (scaffold) session to make dev-server ports, build output dirs and test artifacts honour them. Target repos should ignore `.zcode/`.
+Parallel safety is automatic: each session gets `ZCODE_PORT`, `ZCODE_OUT`, `ZCODE_TMP` and `ZCODE_SESSION_ID`. Tell the first (scaffold) session to make dev-server ports, build output dirs and test artifacts honour them. zcode keeps `.zcode/` and `.playwright-mcp/` out of git via the repo's local `.git/info/exclude`; you don't need to touch `.gitignore` for them.
 
 ## The handoff
 
@@ -81,13 +81,15 @@ zcode plan resume <name> ["<message>"]              # resume failed/partial, rel
 zcode plan resume <name> --session <id> "<answer>"  # answer one blocked session
 ```
 
-`plan.json`: `{"cwd"?, "decisions"?, "context"?, "files"?, "model"?, "effort"?, "sessions": [{"id", "after"?: [ids], ...contract keys}]}`. Top-level decisions/context/files go to every session; `@` entries are files relative to the plan. The plan name is the file basename (or `--id`). Sessions that can run at the same time must own disjoint paths; `plan check` enforces it. When an upstream session ends non-completed, its dependants are `skipped` until you `plan resume`.
+`plan.json`: `{"cwd"?, "decisions"?, "context"?, "files"?, "model"?, "effort"?, "limits"?, "sessions": [{"id", "after"?: [ids], "label"?, ...contract keys}]}`. Top-level decisions/context/files/limits go to every session; `@` entries resolve against the plan file's directory, then the plan's cwd. Don't also list the decisions file under `files`: it is already inlined. The plan name is the file basename (or `--id`). Sessions that can run at the same time must own disjoint paths; `plan check` enforces it. When an upstream session ends non-completed, its dependants are `skipped` until you `plan resume`.
+
+Session ids are global and permanent: give every new run a fresh prefix (`wc3-scaffold`, …) so `plan check` passes first time. A task session may run 2 h by default; a big session (a whole page, a whole flow) can set `"limits": {"timeoutMs": 10800000}`. If one still times out, `zcode plan resume <name> "continue"` picks up from the files it already wrote.
 
 Real tasks outlast a single shell call; always wait in bounded slices. zcode needs network access (the GLM API) and write access to `~/.zcode-cli` and the target repo: in a sandboxed Codex session, if a command fails with a sandbox or network error, re-run the same command with escalated permissions instead of changing it.
 
 ## Reading the brief
 
-`--json` prints one compact line: `status`, `summary`, `files`, failing check tails, `questions`, `issues`, `unresolved`, `scopeViolations`, `touched`, `decisions`, `visual`, `units`, and `result` (path to the full record).
+`--json` prints one compact line: `status`, `summary`, `files`, failing `checks` with tails (`checksPassed` counts the rest), `questions`, `issues`, `unresolved`, `scopeViolations`, `touched`, the first `decisions` (`decisionsMore` counts the rest), unmet `visual` (`visualMet` is "met/total"), `units`, and `result` (path to the full record). Read it straight from the command output; don't pipe it through jq, python or tail.
 
 | status | exit | do |
 |---|---|---|
@@ -101,7 +103,7 @@ Real tasks outlast a single shell call; always wait in bounded slices. zcode nee
 ## Hard rules after dispatch
 
 - Don't open files a `completed` session changed. Don't re-run checks it ran. Don't look at its screenshots.
-- Don't poll `status`; use `wait`.
+- Don't poll `status`; use `wait` (or `plan wait`) once, in the background if you like, and act on its exit.
 - Don't fix code yourself; `resume` the session with one line.
 - Need to know something about the result? `zcode result <id> --full` first; read code only as a last resort.
 - Don't ask zcode to commit, push, publish or deploy unless the user asked; when they did, make it its own final session gated on everything else being `completed`.
@@ -135,7 +137,7 @@ You read the empty repo, decide the design system, copy, motion, form logic and 
 }
 ```
 
-`zcode plan check plan.json` → `zcode plan run plan.json --preflight` (read-only `<id>.pre` sessions; prints only the questions) → answer them once in the decisions file → `zcode plan run plan.json --detach` → `zcode plan wait plan --timeout-ms 540000 --json`. Your total involvement: the decisions, one answer pass, one summary.
+`zcode plan check plan.json` → `zcode plan run plan.json --preflight` (read-only `<id>.pre` sessions, all at once; downstream sessions are told their upstream hasn't run yet; prints only the questions) → answer them once in the decisions file → `zcode plan run plan.json --detach` → `zcode plan wait plan --timeout-ms 540000 --json`. Your total involvement: the decisions, one answer pass, one summary.
 
 ## Exit codes
 
