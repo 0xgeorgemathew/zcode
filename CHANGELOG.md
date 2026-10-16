@@ -17,6 +17,7 @@ Quiet orchestration: the orchestrator reads less, decides once, and the executor
 - Per-session `ZCODE_PORT` / `ZCODE_OUT` / `ZCODE_TMP` env for parallel-safe sessions; `.zcode/` and `.playwright-mcp/` are never reported as task changes.
 - `--touch` for minimal edits outside `--owns`, reported as "touched".
 - Decisions: `--decision` / `--decisions`, structured questions (`q`/`options`/`recommend`), and executor-reported decisions in the handback; dedupe of repeated context/files.
+- Missing `visual` results trigger one cheap report-only follow-up (no repair budget) before any visual repair turn; the prompt says every declared criterion must be reported.
 - `--preflight`: read-only pass listing the open questions before any edit.
 - `--unit "n: goal [owns a,b]"`: one subagent per unit inside a session.
 - Visual verification: `--visual`, `--viewport`, `--serve`; screenshots judged per criterion, results in the brief.

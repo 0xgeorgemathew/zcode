@@ -339,3 +339,37 @@ test('repair prompt without visual is unchanged', () => {
   assert.match(t, /^Zcode ran the acceptance checks and one failed \(repair attempt 1 of 2\):/);
   assert.doesNotMatch(t, /isual/);
 });
+
+// --- visual report-only follow-up --------------------------------------------
+
+const vOk = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: true }];
+const vBad = [{ criterion: 'CTA visible above the fold', viewport: '390x844', met: false }];
+const vContract = { visual: ['CTA visible above the fold'], checks: ['true'] };
+
+test('missing visual: report-only follow-up completes without a repair', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: done({ visual: vOk }) }] });
+  const r = await execute(invocation(fake, { id: 'vr-1', contract: vContract }));
+  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
+  assert.equal(r.repairs, 0);
+  assert.equal(sends().length, 2);
+  assert.match(sends()[1], /^Do not redo any work\. Reply with only the handback block, including `visual` for every criterion: CTA visible above the fold/);
+});
+
+test('visual still missing after the follow-up goes to the repair path', async () => {
+  fake.setScript({ turns: [{ response: done() }, { response: done() }, { response: done({ visual: vOk }) }] });
+  const r = await execute(invocation(fake, { id: 'vr-2', contract: vContract }));
+  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
+  assert.equal(r.repairs, 1);
+  assert.equal(sends().length, 3);
+  assert.match(sends()[1], /^Do not redo any work/);
+  assert.match(sends()[2], /Visual criteria not met/);
+});
+
+test('visual met:false goes straight to repair with no follow-up', async () => {
+  fake.setScript({ turns: [{ response: done({ visual: vBad }) }, { response: done({ visual: vOk }) }] });
+  const r = await execute(invocation(fake, { id: 'vr-3', contract: vContract }));
+  assert.equal(r.status, 'completed', JSON.stringify(r.issues));
+  assert.equal(r.repairs, 1);
+  assert.equal(sends().length, 2);
+  assert.match(sends()[1], /Visual criteria not met/);
+});
