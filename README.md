@@ -226,7 +226,8 @@ Inside `zcode task`, subagents are optional. The executor decides when to use th
 | `--timeout-ms` | all turns; wait | run 600000, task 1800000 | the whole invocation incl. checks and repairs |
 | `--session` | run | | 0.3 compat: continue by zcode id or engine `sess_` id |
 | `--profile` | agent | `general-purpose` | subagent profile |
-| `--mcp` / `--mcp-inherit` / `--mcp-list` | run, task, agent | hermetic | MCP servers (inline JSON or `@file`) |
+| `--mcp` / `--mcp-inherit` / `--mcp-list` | run, task, agent | hermetic, plus the desktop's `playwright` | MCP servers (inline JSON or `@file`) |
+| `--no-browser` | run, task, agent | off | Drop the desktop's `playwright` MCP server |
 | `--skills` / `--no-skills` | run, task, agent | desktop skills | add skills; or run with none |
 | `--json`, `--quiet` | all | | see Machine interface |
 | `--thinking` / `--no-thinking` | turns | run on, task off | mirror reasoning to stderr |

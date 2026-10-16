@@ -43,6 +43,7 @@ execution:
   --profile <name>      subagent profile (agent command; default general-purpose)
   --mcp <json|@f>       add MCP servers (repeatable); hermetic by default
   --mcp-inherit         also inherit the desktop's enabled MCP servers
+  --no-browser          drop the desktop's playwright MCP server (on by default)
   --mcp-list            print the effective MCP server set as JSON and exit
   --skills <dir>        add skills (repeatable): one skill dir or a root of them
   --no-skills           empty skill set
@@ -96,7 +97,7 @@ function parseMcpSpec(value) {
 
 const COMMANDS = new Set(['run', 'task', 'agent', 'resume', 'status', 'list', 'wait', 'cancel', 'login', 'doctor', '__exec']);
 const TASK_ONLY = new Set(['task', 'accept', 'check', 'file', 'context', 'maxRepairs', 'checkTimeoutMs']);
-const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
+const START_ONLY = new Set(['id', 'label', 'owns', 'allowOverlap', 'mcpSpecs', 'mcpInherit', 'noBrowser', 'skillsDirs', 'noSkills', 'profile', 'cwd']);
 
 function parseArgv(argv) {
   const out = {
@@ -127,6 +128,7 @@ function parseArgv(argv) {
       checkTimeoutMs: undefined,
       mcpSpecs: [],
       mcpInherit: false,
+      noBrowser: false,
       mcpList: false,
       skillsDirs: [],
       noSkills: false,
@@ -148,7 +150,7 @@ function parseArgv(argv) {
   ]);
   const boolFlags = new Map([
     ['--json', ['json', true]], ['--fresh', ['fresh', true]], ['--mcp-inherit', ['mcpInherit', true]],
-    ['--mcp-list', ['mcpList', true]], ['--no-skills', ['noSkills', true]],
+    ['--mcp-list', ['mcpList', true]], ['--no-skills', ['noSkills', true]], ['--no-browser', ['noBrowser', true]],
     ['--include-reasoning', ['includeReasoning', true]], ['--quiet', ['quiet', true]],
     ['--detach', ['detach', true]], ['--allow-overlap', ['allowOverlap', true]],
     ['--thinking', ['thinking', true]], ['--no-thinking', ['thinking', false]], ['--stream', ['stream', true]],

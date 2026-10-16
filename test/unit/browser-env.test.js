@@ -37,3 +37,28 @@ test('engine env points Playwright and npm at the real HOME caches', () => {
   const kept = engineEnv({ home: '/s', builtinProviderConfig: '/c', parentEnv: { HOME: real, PLAYWRIGHT_BROWSERS_PATH: '/mine' } });
   assert.equal(kept.PLAYWRIGHT_BROWSERS_PATH, '/mine');
 });
+
+test('the desktop playwright server is inherited by default; --no-browser drops it', () => {
+  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'zc-live-'));
+  fs.mkdirSync(path.join(live, 'cli'));
+  fs.writeFileSync(path.join(live, 'cli', 'config.json'), JSON.stringify({ mcp: { servers: {
+    playwright: { command: 'npx', args: ['@playwright/mcp@latest'] },
+    exa: { url: 'https://mcp.exa.ai/mcp' },
+  } } }));
+  const { effectiveMcpServers } = require('../../lib/isolation.js');
+  assert.deepEqual(Object.keys(effectiveMcpServers({ live })), ['playwright']);
+  assert.deepEqual(Object.keys(effectiveMcpServers({ live, browser: false })), []);
+  assert.deepEqual(Object.keys(effectiveMcpServers({ live, inherit: true, browser: false })), ['exa']);
+});
+
+test('the desktop-only control-browser skill is not copied into the engine HOME', () => {
+  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'zc-live-'));
+  for (const name of ['control-browser', 'other']) {
+    fs.mkdirSync(path.join(live, 'skills', name), { recursive: true });
+    fs.writeFileSync(path.join(live, 'skills', name, 'SKILL.md'), '---\nname: x\n---\n');
+  }
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'zc-eh-'));
+  const { buildEngineHome } = require('../../lib/isolation.js');
+  buildEngineHome({ home, live, key: 'k' });
+  assert.deepEqual(fs.readdirSync(path.join(home, '.zcode', 'skills')), ['other']);
+});
