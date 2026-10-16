@@ -9,7 +9,7 @@ const USAGE = `usage:
   zcode [run] [options] <prompt…>      one-shot turn (prompt via stdin when piped)
   zcode agent [options] <instructions…> turn that MUST dispatch a subagent
   zcode resume <id> [message…]         continue a session (answer, follow-up, retry)
-  zcode status [<id>] [--json]         one session in detail, or all sessions
+  zcode status [<id>] [--all] [--json] one session in detail, or the 15 most recent (--all: every session)
   zcode wait <id…> [--any] [--json]    block until sessions finish; print handbacks
   zcode result <id> [--full] [--json]  print a finished session's handback (brief by default)
   zcode cancel <id> [--json]           stop a running session
@@ -63,8 +63,8 @@ task contract (task only):
   --check-timeout-ms <n> per-check timeout (default 300000)
 
 plan (zcode plan run <plan.json>):
-  plan.json             {cwd?, decisions?, context?, files?, model?, effort?,
-                        sessions:[{id, after?:[ids], ...task contract keys}]}; the
+  plan.json             {cwd?, decisions?, context?, files?, model?, effort?, limits?,
+                        sessions:[{id, after?:[ids], label?, ...task contract keys}]}; the
                         top-level decisions/context/files are prepended to every
                         session. A session starts when everything it is "after" has
                         completed; sessions that can run together must own disjoint
@@ -82,7 +82,7 @@ execution:
                         engine's levels per model); an unsupported level exits 2
                         before any spawn. default: max
   --timeout-ms <n>      whole invocation incl. checks/repairs (default 600000;
-                        task default 1800000)
+                        task default 7200000 = 2 h)
   --profile <name>      subagent profile (agent command; default general-purpose)
   --mcp <json|@f>       add MCP servers (repeatable); hermetic by default
   --mcp-inherit         also inherit the desktop's enabled MCP servers
@@ -194,6 +194,7 @@ function parseArgv(argv) {
       stream: false,
       full: false,
       any: false,
+      all: false,
     },
   };
   const valueFlags = new Map([
@@ -214,7 +215,7 @@ function parseArgv(argv) {
     ['--include-reasoning', ['includeReasoning', true]], ['--quiet', ['quiet', true]],
     ['--detach', ['detach', true]], ['--allow-overlap', ['allowOverlap', true]],
     ['--thinking', ['thinking', true]], ['--no-thinking', ['thinking', false]], ['--stream', ['stream', true]],
-    ['--full', ['full', true]], ['--any', ['any', true]], ['--preflight', ['preflight', true]],
+    ['--full', ['full', true]], ['--any', ['any', true]], ['--all', ['all', true]], ['--preflight', ['preflight', true]],
   ]);
   const numeric = (flag, value, { min = 1 } = {}) => {
     const n = Number(value);
@@ -247,7 +248,11 @@ function parseArgv(argv) {
       continue;
     }
     if (arg === '--help' || arg === '-h') {
-      process.stdout.write(USAGE + '\n');
+      // Scan the rest of argv for the command: `zcode --help task` works too.
+      let command = out.commandSet ? out.command : null;
+      if (!command) for (const a of argv) if (COMMANDS.has(a) && !a.startsWith('__')) { command = a === 'list' ? 'status' : a; break; }
+      const text = command && require('../lib/help.js').commandHelp(command);
+      process.stdout.write((text || USAGE) + '\n');
       process.exit(0);
     }
     if (arg === '--version') {
@@ -290,6 +295,7 @@ function parseArgv(argv) {
       if (out.given.has(key)) fail(2, `--${flagName(key)} cannot change on resume; it is fixed when the session starts.`);
     }
   }
+  if (out.given.has('all') && cmd !== 'status') fail(2, '--all is only valid with "zcode status".');
   if (out.given.has('any') && cmd !== 'wait') fail(2, '--any is only valid with "zcode wait".');
   if (out.given.has('full') && !FULL_COMMANDS.has(cmd)) fail(2, `--full is not valid with "zcode ${cmd}".`);
   if (out.given.has('session') && cmd !== 'run' && cmd !== 'plan') fail(2, '--session is only valid with "zcode run"; use "zcode resume <id>".');

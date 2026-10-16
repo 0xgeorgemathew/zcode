@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.2
+
+Fixes from a real orchestrated run: smaller briefs, friendlier plan files, long tasks that survive, quieter discovery.
+
+### Changed
+
+- Briefs carry failing checks only (`checksPassed: N` counts the rest) and unmet visual entries only (`visualMet: "M/N"` always when visual was declared; criterion clipped to 160, note to 300). `decisions` are capped at 6 (`{what: 160, why: 120}`, `decisionsMore: K`), `files` at 40 (`filesMore: K`) and exclude files attributed to a concurrent session; question options are clipped to 300. The full record (`result.json`, `--full`) is unchanged.
+- Default task timeout is 2 h (`7200000`, was 30 min); run/agent unchanged. A timeout's error message says how to continue: `zcode resume <id> "continue"` (plan sessions: `zcode plan resume <name> "continue"`).
+- `zcode <command> --help` prints only that command's usage and flags (under 2000 bytes; `zcode plan --help` covers the subcommands). `zcode --help` keeps the full text.
+- `zcode status` lists the 15 most recent sessions and one `… N more (zcode status --all)` line; `--all` lists everything. `--json` is unchanged.
+
+### Added
+
+- Plan files: `@file` in `decisions`/`context` resolves next to the plan file, then against the plan's cwd (same fallback for `--task contract.json`: contract dir, then `--cwd`); the error names both paths. Per-session `label` (session label becomes `plan:<name> <label>`). Top-level `limits` (timeoutMs, maxRepairs, checkTimeoutMs) default every session; a session's own limits win per key. Taken ids print one trailing `hint:` line instead of repeating advice per id.
+- `plan run --preflight`: a session with `after` gets a short paragraph naming the upstream sessions (id + objective, 200 chars) that have not run yet, so it does not ask about their absence.
+- Usage accounting survives failures: model requests are counted per turn (also on timeout/failure); the full result `usage` gains `modelRequests` and `incomplete: true`; the session record accumulates `usageTotal` across resumes (full result includes it, the brief does not).
+- Target-repo hygiene: at task/run/agent start in a git workspace, `.zcode/` and `.playwright-mcp/` are appended to the repo's local exclude file (`git rev-parse --git-path info/exclude`; never `.gitignore`).
+
 ## 0.5.0
 
 Quiet orchestration: the orchestrator reads less, decides once, and the executor stops guessing.

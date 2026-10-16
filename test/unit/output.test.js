@@ -25,7 +25,7 @@ function scriptCheck(name, body) {
   fs.writeFileSync(path.join(fake.work, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 }
 
-test('brief: passing check reduced to command+ok, failing check carries exit code and a bounded tail', async () => {
+test('brief: only failing checks (with exit code and a bounded tail); passing ones are a count carries exit code and a bounded tail', async () => {
   fake.setScript({ turns: [{ write: { path: 'a.txt', content: 'x' }, response: handback({ status: 'done', summary: 's' }) }] });
   const r = await execute(invocation(fake, {
     maxRepairs: 0,
@@ -36,10 +36,11 @@ test('brief: passing check reduced to command+ok, failing check carries exit cod
   assert.equal(b.schema, 'zcode.brief/1');
   assert.equal(b.status, 'failed');
   assert.deepEqual(b.files, ['a.txt']);
-  assert.deepEqual(b.checks[0], { command: 'echo fine', ok: true });
-  assert.equal(b.checks[1].ok, false);
-  assert.equal(b.checks[1].exitCode, 4);
-  assert.equal(b.checks[1].tail.length, 1500);
+  assert.equal(b.checks.length, 1);
+  assert.equal(b.checksPassed, 1);
+  assert.equal(b.checks[0].ok, false);
+  assert.equal(b.checks[0].exitCode, 4);
+  assert.equal(b.checks[0].tail.length, 1500);
   assert.equal(b.error.kind, 'checks_failed');
   assert.equal(b.result, r.files.result);
   // Empty keys are omitted; heavyweight fields never appear.

@@ -47,7 +47,8 @@ test('task: work + passing check → completed, with changes, evidence and a fin
   assert.equal(r.checksPassed, true);
   assert.equal(r.checks[0].exitCode, 0);
   assert.equal(r.turns, 1);
-  assert.deepEqual(r.usage, { inputTokens: 100, outputTokens: 10 });
+  assert.deepEqual(r.usage, { inputTokens: 100, outputTokens: 10, modelRequests: 1 });
+  assert.deepEqual(r.usageTotal, { inputTokens: 100, outputTokens: 10, modelRequests: 1 });
 
   // The engine got the executor protocol with ownership + checks + handback spec.
   const [prompt] = sends();

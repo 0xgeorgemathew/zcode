@@ -298,7 +298,8 @@ test('unmet visual criteria trigger a repair turn; met after repair completes, w
   assert.match(repair, /CTA visible above the fold @390x844/);
   assert.match(repair, /\$ZCODE_PORT/);
   assert.ok(r.notVerified.some((n) => /executor's judgement from its own screenshots \(1 of 1 reported met\)/.test(n)));
-  assert.deepEqual(buildBrief(r).visual, good);
+  assert.equal(buildBrief(r).visual, undefined, 'met criteria are a count, not entries');
+  assert.equal(buildBrief(r).visualMet, '1/1');
 });
 
 test('unmet visual after the repair budget is partial with a visual issue; no checks needed for the loop', async () => {

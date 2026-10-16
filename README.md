@@ -116,13 +116,13 @@ Flags cover the common fields. For richer handoffs, pass `--task contract.json`,
   "references": ["design/team.png described in design/team.md"],
   "context": ["Copy lives in content/team.json"],
   "owns": ["src/pages/team/**", "content/team.json"],
-  "limits": { "timeoutMs": 1800000, "maxRepairs": 2, "checkTimeoutMs": 300000 },
+  "limits": { "timeoutMs": 7200000, "maxRepairs": 2, "checkTimeoutMs": 300000 },
   "model": "glm-5.3",
   "effort": "high"
 }
 ```
 
-`decisions` (flags `--decision "…"`, repeatable, and `--decisions @file`; `design` is an alias) are presented to the model as binding decisions it must implement, not revisit. `@file` entries inside contract `decisions`/`context` lists are inlined (relative to the contract file). If something user-visible or behavioural is left open, the executor does not guess: when it blocks the work it reports `blocked` with a structured question `{"q", "options": [...], "recommend"}` (plain strings still work); when it does not block, it takes the most conservative choice and lists it in the handback `decisions: [{what, why}]`, which the brief carries so the orchestrator can overrule it.
+`decisions` (flags `--decision "…"`, repeatable, and `--decisions @file`; `design` is an alias) are presented to the model as binding decisions it must implement, not revisit. `@file` entries inside contract `decisions`/`context` lists are inlined (relative to the contract file, then to `--cwd`; the error names both paths). If something user-visible or behavioural is left open, the executor does not guess: when it blocks the work it reports `blocked` with a structured question `{"q", "options": [...], "recommend"}` (plain strings still work); when it does not block, it takes the most conservative choice and lists it in the handback `decisions: [{what, why}]`, which the brief carries so the orchestrator can overrule it.
 
 A file passed with `--file` and also inlined with `--context @file` reaches the executor once (as context); identical context and acceptance entries are deduped.
 
@@ -192,7 +192,7 @@ zcode cancel page-1          # stop the turn and any running check; recorded as 
   ] }
 ```
 
-Optional top-level keys: `cwd` (relative to the plan file), `decisions`, `context`, `files` (prepended to every session; `@file` entries are read relative to the plan file), `model`, `effort`. Each session has an `id` (its zcode session id), optional `after` (ids) and any task contract keys.
+Optional top-level keys: `cwd` (relative to the plan file), `decisions`, `context`, `files` (prepended to every session; `@file` entries are read relative to the plan file, then against the plan's cwd), `model`, `effort`, `limits` (`timeoutMs`, `maxRepairs`, `checkTimeoutMs`: the default for every session; a session's own `limits` override per key). Each session has an `id` (its zcode session id), optional `after` (ids), optional `label` (the session label becomes `plan:<name> <label>`) and any task contract keys. In `plan run --preflight`, a session with `after` is told which upstream sessions have not run yet and to assume they deliver their objectives.
 
 ```sh
 zcode plan check plan.json              # validate: exit 2, one line per problem
@@ -237,7 +237,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
  "result":"/…/sessions/page-1/result.json"}
 ```
 
-`run` and `agent` briefs also carry `response`, because the text answer is the product there. Passing checks are reduced to `{command, ok:true}`; a failing check carries `exitCode`, `timedOut` and the last 1500 characters of its output as `tail`. `result` is the path to the full record: `result.json` on disk is always the full `zcode.result/1` record, and `--full` prints that same record instead of the brief (on `task`/`run`/`agent`/`resume`/`wait`/`result`):
+The brief lists unmet visual criteria only (`visualMet: "M/N"` counts them all), at most 6 `decisions` (`decisionsMore`) and 40 `files` (`filesMore`, concurrent sessions' files excluded). `run` and `agent` briefs also carry `response`, because the text answer is the product there. Only failing checks are listed (`checksPassed: N` counts the passing ones); a failing check carries `exitCode`, `timedOut` and the last 1500 characters of its output as `tail`. `result` is the path to the full record: `result.json` on disk is always the full `zcode.result/1` record, and `--full` prints that same record instead of the brief (on `task`/`run`/`agent`/`resume`/`wait`/`result`):
 
 ```json
 {"type":"result","schema":"zcode.result/1","ok":true,"status":"completed","id":"page-1","kind":"task",
@@ -263,7 +263,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `{"type":"mcp","name","status"}` · `{"type":"retry",…}` · `{"type":"model_request_started",…}` | MCP settling, start-up retry, engine model evidence |
 | `{"type":"stream","kind":"text_delta\|reasoning_delta","delta"}` | live text (run/agent; task with `--stream`) |
 
-`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one brief per session as each finishes (`--full`: full records; `--any`: stop at the first). When `--timeout-ms` elapses first it prints exactly one line per session still running, `{"type":"pending","id","state","phase","elapsedMs"}` (human mode: `<id> <state> <phase> 12m`), and exits 124. `zcode result <id> [--json] [--full]` prints a finished session's handback without waiting (exit 7 if it is still running). `zcode status` without an id is one line per session. Usage errors are always a single line (`zcode: unknown flag (did you mean …?)` for a mistyped option), never the help text.
+`zcode status <id> --json` returns `{"type":"status", state, status, phase, pid, live, activity, recent:[…], result?}`. `zcode wait --json` prints one brief per session as each finishes (`--full`: full records; `--any`: stop at the first). When `--timeout-ms` elapses first it prints exactly one line per session still running, `{"type":"pending","id","state","phase","elapsedMs"}` (human mode: `<id> <state> <phase> 12m`), and exits 124. `zcode result <id> [--json] [--full]` prints a finished session's handback without waiting (exit 7 if it is still running). `zcode status` without an id is one line for each of the 15 most recent sessions plus `… N more (zcode status --all)`. `zcode <command> --help` prints only that command's usage (under 2000 bytes); bare `zcode --help` is the full reference. Usage errors are always a single line (`zcode: unknown flag (did you mean …?)` for a mistyped option), never the help text.
 
 &nbsp;
 
@@ -287,7 +287,7 @@ The final line is the compact **brief** (`zcode.brief/1`), sized for an orchestr
 | `--check-timeout-ms` | task, resume | `300000` | per check; checks get `CI=1` when unset |
 | `--model` | all turns | `glm-5.3-flash` | `glm-5.3` plus aliases `5.3`, `53`, `flash`, `5.3-flash`, `53f` |
 | `--effort` | all turns | `max` | the model's levels: `low`, `high`, `max` |
-| `--timeout-ms` | all turns; wait | run 600000, task 1800000 | the whole invocation incl. checks and repairs |
+| `--timeout-ms` | all turns; wait | run 600000, task 7200000 (2 h) | the whole invocation incl. checks and repairs |
 | `--session` | run | | 0.3 compat: continue by zcode id or engine `sess_` id |
 | `--profile` | agent | `general-purpose` | subagent profile |
 | `--mcp` / `--mcp-inherit` / `--mcp-list` | run, task, agent | hermetic, plus the desktop's `playwright` | MCP servers (inline JSON or `@file`) |

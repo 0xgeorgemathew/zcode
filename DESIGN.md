@@ -1054,3 +1054,19 @@ at the command entry) so the builders can run inside the supervisor.
 - The default MCP set is the desktop's playwright server only (`--no-browser`
   for none); the engine (0.16.9) no longer broadcasts the mode over
   `state.updated`, so the session's own `mode` field is the yolo evidence.
+
+### 18.9 Release notes folded in at 0.5.2
+
+- Brief projection is smaller: failing checks + `checksPassed`, unmet visual +
+  `visualMet`, decisions capped at 6, files capped at 40 and without
+  `concurrentSession` files, question options clipped. `result.json` is full.
+- Plan: `@file` falls back from the plan file's directory to the plan cwd
+  (same for `--task` contracts); `label`, top-level `limits`; one `hint:` line
+  for taken ids; preflight of a session with `after` carries a context
+  paragraph about its not-yet-run upstream sessions.
+- Task timeout default 2 h. `runTurn` attaches the partial turn (model request
+  count) to the error it throws; `usage` gains `modelRequests`/`incomplete`
+  and the session record keeps `usageTotal` across resumes.
+- `ensureLocalExclude` (lib/workspace.js) appends `.zcode/` and
+  `.playwright-mcp/` to `info/exclude` at session start.
+- `lib/help.js`: per-command help; `status` shows 15 sessions unless `--all`.
