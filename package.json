@@ -10,7 +10,9 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@0xgeorgemathew/zcode": "^0.4.0"
+  },
   "files": [
     "bin",
     "lib",
@@ -41,5 +43,13 @@
     "ndjson",
     "orchestrator",
     "executor"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xgeorgemathew/zcode.git"
+  },
+  "homepage": "https://github.com/0xgeorgemathew/zcode#readme",
+  "bugs": {
+    "url": "https://github.com/0xgeorgemathew/zcode/issues"
+  }
 }

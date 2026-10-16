@@ -1,31 +1,26 @@
-<div align="center">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/0xgeorgemathew/zcode/main/docs/assets/hero.svg" alt="A zcode work order: the contract on the left, the handback with changed files, a passing check and a COMPLETED stamp on the right" width="960">
+</p>
 
-# ⚡ zcode
+<p align="center">
+  <a href="https://www.npmjs.com/package/@0xgeorgemathew/zcode"><img src="https://img.shields.io/npm/v/@0xgeorgemathew/zcode.svg?color=1C3F95&label=npm" alt="npm version"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-1C3F95" alt="node 20 or later">
+  <img src="https://img.shields.io/badge/dependencies-0-1C3F95" alt="zero dependencies">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1C3F95" alt="MIT license"></a>
+</p>
 
-**The execution engine for orchestrator agents.**
+zcode is a command-line executor for orchestrator agents. Claude Code, Codex, or any agent with a shell hands it a task contract. zcode implements the task with GLM-5.3-Flash, runs your checks itself, and returns a handback that lists the changed files, the check results, and anything it could not verify.
 
-Hand it a scoped task. It implements, verifies with *your* checks, and hands back proof.
+The orchestrator keeps product decisions, design direction, and coordination. zcode works only inside the scope it is given.
 
-[![npm](https://img.shields.io/npm/v/@0xgeorgemathew/zcode.svg?color=cb3837&logo=npm)](https://www.npmjs.com/package/@0xgeorgemathew/zcode)
-[![node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)](package.json)
-[![deps](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-`GLM-5.3-Flash` · effort `max` by default · `GLM-5.3` on demand
-
-</div>
-
-&nbsp;
-
-Opus, Sonnet, GPT, or any agent with a shell delegates implementation to zcode. The orchestrator keeps product decisions, design direction, and coordination. zcode owns execution inside the scope it is given, and reports back what changed, what was checked, what failed, and what is still unverified.
-
-|  |  |
-|---|---|
-| 🧾 **Contracts, not prompts** | objective, scope, constraints, binding design decisions, acceptance criteria, checks |
-| ✅ **Evidence over claims** | zcode runs your checks itself and repairs failures in bounded turns; the model's report is only a claim |
-| 🧵 **Real sessions** | stable ids, detach, `status`, `wait`, `resume`, `cancel`; interrupted sessions are resumable |
-| 🧱 **Safe parallelism** | `--owns` leases per workspace; overlapping scopes are refused, out-of-scope edits are flagged |
-| 🤖 **Machine-first output** | one stable `zcode.result/1` JSON line; clean, colour-free text when not on a TTY |
+<table>
+<tr><td><b>Contract in</b></td><td>Objective, scope, constraints, binding design decisions, acceptance criteria, owned paths and checks. Only the objective is required.</td></tr>
+<tr><td><b>Checks run by zcode</b></td><td>zcode runs each <code>--check</code> after the work. A failing check sends its output back to the model for up to 2 repair turns.</td></tr>
+<tr><td><b>Status from evidence</b></td><td><code>completed</code> requires passing checks and no edits outside <code>--owns</code>. The model's own report is kept as a claim.</td></tr>
+<tr><td><b>Sessions</b></td><td>Stable ids, <code>--detach</code>, <code>status</code>, <code>wait</code>, <code>resume</code>, <code>cancel</code>. A session whose process died shows as interrupted and can be resumed.</td></tr>
+<tr><td><b>Parallel work</b></td><td>Two sessions with overlapping <code>--owns</code> in one repo are refused with exit 7.</td></tr>
+<tr><td><b>Output</b></td><td>One <code>zcode.result/1</code> JSON line with <code>--json</code>. No colour codes when stdout is not a terminal.</td></tr>
+</table>
 
 &nbsp;
 
@@ -33,35 +28,35 @@ Opus, Sonnet, GPT, or any agent with a shell delegates implementation to zcode. 
 
 ```sh
 npm install -g @0xgeorgemathew/zcode
-echo "$ZAI_API_KEY" | zcode login    # store your Z.AI key (mode 600, never printed)
-zcode doctor                         # check engine, isolation, key
+echo "$ZAI_API_KEY" | zcode login    # stores your Z.AI key with mode 600; zcode never prints it
+zcode doctor                         # checks the engine, isolation and key
 
 zcode task --check "npm test" "Fix the off-by-one in src/paginate.ts"
 ```
 
-Needs node 20+ for the CLI (26 recommended for the engine child) and the ZCode engine on the machine. Today that is the copy bundled with the ZCode desktop app, which is resolved automatically.
+The CLI needs node 20 or later. The engine child runs best on node 26. zcode also needs the ZCode engine, which today ships inside the ZCode desktop app; zcode finds it automatically.
 
-Orchestrator skills for Claude Code and Codex ship in [`skills/`](skills/README.md).
+Skills that teach Claude Code and Codex to delegate to zcode are in [`skills/`](skills/README.md).
 
 &nbsp;
 
 ## Models and effort
 
-Every command runs on **GLM-5.3-Flash at effort `max`** unless you say otherwise.
+Every command runs on GLM-5.3-Flash at effort `max` unless you pass a flag.
 
-| | flag | values | default |
+| setting | flag | values | default |
 |---|---|---|---|
-| 🧠 model | `--model` | `glm-5.3-flash` (aliases `flash`, `5.3-flash`, `53f`) · `glm-5.3` (aliases `5.3`, `53`) | `glm-5.3-flash` |
-| 🎚️ effort | `--effort` | `low` · `medium` · `high` · `xhigh` · `max` | `max` |
+| model | `--model` | `glm-5.3-flash` (aliases `flash`, `5.3-flash`, `53f`), `glm-5.3` (aliases `5.3`, `53`) | `glm-5.3-flash` |
+| effort | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` | `max` |
 
 ```sh
-zcode task "…"                                   # GLM-5.3-Flash, effort max
-zcode task --effort high "…"                     # Flash, lighter reasoning
-zcode task --model glm-5.3 "…"                   # full GLM-5.3, effort max
-zcode task --model glm-5.3 --effort medium "…"   # full GLM-5.3, medium effort
+zcode task "..."                                   # GLM-5.3-Flash, effort max
+zcode task --effort high "..."                     # Flash with less reasoning
+zcode task --model glm-5.3 "..."                   # GLM-5.3, effort max
+zcode task --model glm-5.3 --effort medium "..."   # GLM-5.3, effort medium
 ```
 
-A task contract can also set `"model"` and `"effort"`; flags win over the contract. A resumed session keeps the model and effort it started with unless you pass the flags again.
+A task contract can set `"model"` and `"effort"`. Flags override the contract. A resumed session keeps its original model and effort unless you pass the flags again.
 
 &nbsp;
 
@@ -285,4 +280,6 @@ npm run accept:53
 
 Live tests load the key from the repo `.env`, which is never committed or shipped. The design record and the wire-protocol facts pinned live are in `DESIGN.md` (§17 covers the 0.4 executor redesign) and `docs/BUILD-REPORT.md`.
 
-MIT license.
+## License
+
+MIT. Source and issues: [github.com/0xgeorgemathew/zcode](https://github.com/0xgeorgemathew/zcode).

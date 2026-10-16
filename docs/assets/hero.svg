@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="960" height="320" viewBox="0 0 960 320" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <pattern id="g" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M16 0H0V16" fill="none" stroke="#C9D6EE" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="960" height="320" rx="14" fill="#EEF3FB"/>
+  <rect width="960" height="320" rx="14" fill="url(#g)"/>
+  <!-- contract in -->
+  <g transform="translate(40 40)">
+    <text x="0" y="0" font-size="11" letter-spacing="2" fill="#41557C">WORK ORDER · CONTRACT IN</text>
+    <text x="0" y="40" font-size="40" font-weight="700" fill="#1C3F95">zcode</text>
+    <text x="0" y="70" font-size="14" fill="#14213D">Implementation, delegated and verified.</text>
+    <g font-size="13" fill="#14213D">
+      <text x="0" y="118"><tspan fill="#41557C">objective </tspan>Build the pricing page</text>
+      <text x="0" y="142"><tspan fill="#41557C">owns      </tspan>src/pages/pricing/</text>
+      <text x="0" y="166"><tspan fill="#41557C">check     </tspan>npm run build</text>
+      <text x="0" y="190"><tspan fill="#41557C">model     </tspan>GLM-5.3-Flash · effort max</text>
+    </g>
+  </g>
+  <!-- perforation -->
+  <line x1="490" y1="24" x2="490" y2="296" stroke="#1C3F95" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
+  <!-- handback out -->
+  <g transform="translate(530 40)">
+    <text x="0" y="0" font-size="11" letter-spacing="2" fill="#41557C">HANDBACK · EVIDENCE OUT</text>
+    <g font-size="13" fill="#14213D">
+      <text x="0" y="40"><tspan fill="#41557C">A </tspan>src/pages/pricing/index.tsx</text>
+      <text x="0" y="64"><tspan fill="#41557C">A </tspan>src/pages/pricing/PlanCard.tsx</text>
+      <text x="0" y="88"><tspan fill="#41557C">M </tspan>src/pages/pricing/styles.css</text>
+      <text x="0" y="124"><tspan fill="#1E7A47" font-weight="700">✓ </tspan>npm run build</text>
+      <text x="0" y="148"><tspan fill="#41557C">scope violations </tspan>0</text>
+    </g>
+    <g transform="translate(150 222) rotate(-6)">
+      <rect x="-118" y="-30" width="236" height="60" rx="6" fill="none" stroke="#E4572E" stroke-width="3"/>
+      <rect x="-111" y="-23" width="222" height="46" rx="3" fill="none" stroke="#E4572E" stroke-width="1"/>
+      <text x="0" y="-2" text-anchor="middle" font-size="20" font-weight="700" letter-spacing="3" fill="#E4572E">COMPLETED</text>
+      <text x="0" y="16" text-anchor="middle" font-size="10" letter-spacing="2" fill="#E4572E">CHECKED BY ZCODE · EXIT 0</text>
+    </g>
+  </g>
+</svg>
